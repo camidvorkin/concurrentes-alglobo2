@@ -8,11 +8,16 @@ default-run = "alglobo"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+serde = "1.0"
+serde_yaml = "0.8"
 
 [[bin]]
 name = "alglobo"
 path = "src/alglobo.rs"
 
+[[bin]]
+name = "agents"
+path = "src/agents.rs"
 
 [[bin]]
 name = "informe"
