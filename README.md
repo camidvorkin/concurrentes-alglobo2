@@ -1,10 +1,10 @@
-# Trabajo Práctico: AlGlobo
+# Trabajo Práctico: AlGlobo - Pagos
 
-Modelado de reservas de vuelos de manera concurrente.
+Modelado de procesamiento de pagos (de reserva de vuelos) de manera concurrente.
 
-Toda la documentación se encuentra en nuestro [rustdoc](https://camidvorkin.github.io/concurrentes-alglobo)
+Toda la documentación se encuentra en nuestro [rustdoc](https://camidvorkin.github.io/concurrentes-alglobo2)
 
-El informe se puede leer en [PDF](https://camidvorkin.github.io/concurrentes-alglobo/informe.pdf) o en el rustdoc mismo
+El informe se puede leer en [PDF](https://camidvorkin.github.io/concurrentes-alglobo2/informe.pdf) o en el rustdoc mismo
 
 ## Un par de comandos
 
