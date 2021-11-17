@@ -2,23 +2,20 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests for threads
-      run: cargo test --bin threads
-    - name: lint
-      run: cargo clippy
+      - uses: actions/checkout@v2
+      - name: Build
+        run: cargo build --verbose
+      - name: lint
+        run: cargo clippy
