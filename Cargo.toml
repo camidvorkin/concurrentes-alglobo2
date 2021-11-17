@@ -1,0 +1,19 @@
+[package]
+name = "alglobo-pagos"
+version = "0.1.0"
+edition = "2018"
+default-run = "alglobo"
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[[bin]]
+name = "alglobo"
+path = "src/alglobo.rs"
+
+
+[[bin]]
+name = "informe"
+path = "src/informe.rs"
