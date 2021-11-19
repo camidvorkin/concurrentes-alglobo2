@@ -1,3 +1,11 @@
 - name: "bank"
   successrate: 0.9
   port: 1024
+
+- name: "airline"
+  successrate: 0.7
+  port: 1025
+
+- name: "hotel"
+  successrate: 0.85
+  port: 1026
