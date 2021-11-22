@@ -1,8 +1,9 @@
 pub mod logger;
+use rand::Rng;
 use serde_yaml::{self, Sequence};
 use std::{
     convert::TryInto,
-    io::{BufRead, BufReader},
+    io::{BufReader, Read},
     net::{SocketAddr, TcpListener},
     thread::{self},
 };
@@ -31,11 +32,16 @@ fn create_listener(name: String, port: u16, successrate: f64) {
         thread::Builder::new()
             .name(format!("{} - {}", name, peer.port()))
             .spawn(move || loop {
-                let mut buffer = String::new();
-                reader.read_line(&mut buffer).expect("failed to read line");
-                if !buffer.is_empty() {
-                    print!("{}", buffer);
-                }
+                let mut buffer: [u8; 4] = [0; 4];
+                reader
+                    .read_exact(&mut buffer)
+                    .expect("Couldn't read from stream");
+
+                println!(
+                    "{}:{}",
+                    u32::from_be_bytes(buffer),
+                    rand::thread_rng().gen_bool(successrate)
+                );
             })
             .expect("agent connection thread creation failed");
     }

@@ -4,6 +4,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 pub mod logger;
+use rand::{thread_rng, Rng};
 use serde_yaml::{self, Sequence};
 use std::{
     convert::TryInto,
@@ -18,7 +19,8 @@ fn create_connection(port: u16) {
         TcpStream::connect(addr).unwrap_or_else(|_| panic!("connection with port {} failed", port));
 
     loop {
-        stream.write_all("100\n".as_bytes()).expect("write failed");
+        let n: u32 = thread_rng().gen_range(0, 3294967295);
+        stream.write_all(&n.to_be_bytes()).expect("write failed");
         sleep(Duration::from_millis(1000));
     }
 }
