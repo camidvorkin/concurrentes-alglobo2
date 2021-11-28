@@ -4,6 +4,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::fs::File;
 use std::collections::HashMap;
+use std::io::Read;
 
 pub mod logger;
 mod utils;
@@ -24,6 +25,10 @@ fn create_connection(port: u16, agent_name: String, prices: Vec<HashMap<String, 
         let n: u32 = price[&agent_name];
         stream.write_all(&n.to_be_bytes()).expect("write failed");
         sleep(Duration::from_millis(1000));
+
+        // Read from the connection
+        let mut buf = [0; 1];
+        stream.read(&mut buf).expect("read failed");
     }
 }
 

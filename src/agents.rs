@@ -9,6 +9,7 @@ use std::{
     thread::{self},
 };
 use agent::Agent;
+use std::io::Write;
 use utils::{agent_get_name, agent_get_port, agent_get_success_rate};
 
 
@@ -26,16 +27,16 @@ fn create_listener(agent: Agent) {
     );
 
     for stream in listener.incoming() {
-        let stream = stream.expect("failed to read stream");
-
+        let mut stream = stream.expect("failed to read stream");
         let peer = stream
             .peer_addr()
             .expect("Couldn't read connection peer addr");
-        let mut reader = BufReader::new(stream);
+        let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
         
         let name = agent.get_name();
         let success_rate = agent.get_success_rate();
         let agent_clone = agent.clone();
+        
         thread::Builder::new()
             .name(format!("{} - {}", name, peer.port()))
             .spawn(move || loop {
@@ -44,19 +45,24 @@ fn create_listener(agent: Agent) {
                     .read_exact(&mut buffer)
                     .expect("Couldn't read from stream");
 
+                let result: bool = rand::thread_rng().gen_bool(success_rate);
                 agent_clone.log(
                     format!(
                         "Received {} and the operation {}",
                         u32::from_be_bytes(buffer),
-                        if rand::thread_rng().gen_bool(success_rate) { "succeeded" } else { "failed" }
+                        if result { "succeeded" } else { "failed" }
                     ),
                     logger::LogLevel::INFO,
                 );
+
+                stream
+                    .write_all(&[if result { 1 } else { 0 }])
+                    .expect("Couldn't write to stream");
             })
             .expect("agent connection thread creation failed");
     }
 }
-
+    
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agents_config =
         std::fs::File::open("src/agents.yaml").expect("Couldn't open agents config file");
