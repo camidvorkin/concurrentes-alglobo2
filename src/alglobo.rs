@@ -28,7 +28,6 @@ fn create_connection(port: u16, agent_name: String, prices: Vec<HashMap<String, 
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    logger::init();
     let agents_config =
         File::open("src/agents.yaml").expect("Couldn't open agents config file");
     let agents: Sequence =

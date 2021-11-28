@@ -20,6 +20,11 @@ pub fn agent_get_name(agent: &serde_yaml::Value) -> String {
     .expect("Name must be a string").to_string()
 }
 
+pub fn agent_get_success_rate(agent: &serde_yaml::Value) -> f64 {
+    agent["successrate"]
+    .as_f64()
+    .expect("Agent successrate must be a float")
+}
 
 pub fn get_prices(filename: &str, agents: Sequence) -> Result<Vec<HashMap<String, u32>>, Box<dyn Error>> {
     let mut file = File::open(filename)?;

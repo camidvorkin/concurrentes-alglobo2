@@ -1,22 +1,26 @@
 pub mod logger;
+mod agent;
+mod utils;
 use rand::Rng;
 use serde_yaml::{self, Sequence};
 use std::{
-    convert::TryInto,
     io::{BufReader, Read},
     net::{SocketAddr, TcpListener},
     thread::{self},
 };
+use agent::Agent;
+use utils::{agent_get_name, agent_get_port, agent_get_success_rate};
 
-fn create_listener(name: String, port: u16, successrate: f64) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+fn create_listener(agent: Agent) {
+    let addr = SocketAddr::from(([127, 0, 0, 1], agent.get_port()));
     let listener =
-        TcpListener::bind(addr).unwrap_or_else(|_| panic!("listener on port {} failed", port));
+        TcpListener::bind(addr).unwrap_or_else(|_| panic!("listener on port {} failed", agent.get_port()));
 
-    logger::log(
+    agent.log(
         format!(
             "Started {} on port {} with sucess rate {}",
-            name, port, successrate
+            agent.get_name(), agent.get_port(), agent.get_success_rate()
         ),
         logger::LogLevel::INFO,
     );
@@ -28,7 +32,10 @@ fn create_listener(name: String, port: u16, successrate: f64) {
             .peer_addr()
             .expect("Couldn't read connection peer addr");
         let mut reader = BufReader::new(stream);
-
+        
+        let name = agent.get_name();
+        let success_rate = agent.get_success_rate();
+        let agent_clone = agent.clone();
         thread::Builder::new()
             .name(format!("{} - {}", name, peer.port()))
             .spawn(move || loop {
@@ -37,10 +44,13 @@ fn create_listener(name: String, port: u16, successrate: f64) {
                     .read_exact(&mut buffer)
                     .expect("Couldn't read from stream");
 
-                println!(
-                    "{}:{}",
-                    u32::from_be_bytes(buffer),
-                    rand::thread_rng().gen_bool(successrate)
+                agent_clone.log(
+                    format!(
+                        "Received {} and the operation {}",
+                        u32::from_be_bytes(buffer),
+                        if rand::thread_rng().gen_bool(success_rate) { "succeeded" } else { "failed" }
+                    ),
+                    logger::LogLevel::INFO,
                 );
             })
             .expect("agent connection thread creation failed");
@@ -48,7 +58,6 @@ fn create_listener(name: String, port: u16, successrate: f64) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    logger::init();
     let agents_config =
         std::fs::File::open("src/agents.yaml").expect("Couldn't open agents config file");
     let agents: Sequence =
@@ -56,26 +65,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut agents_threads = vec![];
     for agent in agents {
-        let name = agent["name"]
-            .as_str()
-            .expect("Agent name must be a string")
-            .to_string();
-
-        let port = agent["port"]
-            .as_u64()
-            .expect("Agent port must be an unsigned integer")
-            .try_into()
-            .expect("Agent port must be a valid port number");
-
-        let successrate = agent["successrate"]
-            .as_f64()
-            .expect("Agent successrate must be a float");
-
+        let a = Agent::new(agent_get_name(&agent), agent_get_port(&agent), agent_get_success_rate(&agent));
+        
         agents_threads.push(
             thread::Builder::new()
-                .name(name.clone())
+                .name(a.get_name())
                 .spawn(move || {
-                    create_listener(name, port, successrate);
+                    create_listener(a);
                 })
                 .expect("agent thread creation failed"),
         )
