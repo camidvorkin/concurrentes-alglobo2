@@ -2,24 +2,26 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
+use std::fs::File;
+use std::collections::HashMap;
 
 pub mod logger;
-use rand::{thread_rng, Rng};
+mod utils;
 use serde_yaml::{self, Sequence};
 use std::{
-    convert::TryInto,
     net::SocketAddr,
-    thread::{self},
+    thread::{self}
 };
+use utils::{agent_get_name, agent_get_port, get_prices};
 
-fn create_connection(port: u16) {
+fn create_connection(port: u16, agent_name: String, prices: Vec<HashMap<String, u32>>) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
     let mut stream =
         TcpStream::connect(addr).unwrap_or_else(|_| panic!("connection with port {} failed", port));
 
-    loop {
-        let n: u32 = thread_rng().gen_range(0, 3294967295);
+    for price in prices {
+        let n: u32 = price[&agent_name];
         stream.write_all(&n.to_be_bytes()).expect("write failed");
         sleep(Duration::from_millis(1000));
     }
@@ -28,26 +30,26 @@ fn create_connection(port: u16) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     logger::init();
     let agents_config =
-        std::fs::File::open("src/agents.yaml").expect("Couldn't open agents config file");
+        File::open("src/agents.yaml").expect("Couldn't open agents config file");
     let agents: Sequence =
         serde_yaml::from_reader(agents_config).expect("Couldn't parse agents config yaml");
+    let prices = 
+        get_prices("src/prices.csv", agents.clone())?;
 
     let mut agents_threads = vec![];
     for agent in agents {
-        let port: u16 = agent["port"]
-            .as_u64()
-            .expect("Agent port must be an unsigned integer")
-            .try_into()
-            .expect("Agent port must be a valid port number");
+        let port: u16 = agent_get_port(&agent);
+        let agent_name: String = agent_get_name(&agent);
+        let prices_clone = prices.clone();
 
         agents_threads.push(
             thread::Builder::new()
                 .name(port.to_string().clone())
                 .spawn(move || {
-                    create_connection(port);
+                    create_connection(port, agent_name, prices_clone);
                 })
                 .expect("agent connection thread creation failed"),
-        )
+        );
     }
 
     for thread in agents_threads {
