@@ -1,3 +1,0 @@
-2021-11-28 17:30:48.603817 -03:00 | TRACE  | START 
-2021-11-28 17:30:48.604864 -03:00 | INFO   | Started hotel on port 1026 with sucess rate 0.85 
-2021-11-28 17:30:51.451704 -03:00 | INFO   | Received 433 and the operation succeeded 

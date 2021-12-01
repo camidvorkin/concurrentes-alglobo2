@@ -1,3 +1,0 @@
-2021-11-28 17:30:48.600282 -03:00 | TRACE  | START 
-2021-11-28 17:30:48.602371 -03:00 | INFO   | Started bank on port 1024 with sucess rate 0.9 
-2021-11-28 17:30:51.452257 -03:00 | INFO   | Received 121 and the operation succeeded 

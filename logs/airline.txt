@@ -1,3 +1,0 @@
-2021-11-28 17:30:48.602491 -03:00 | TRACE  | START 
-2021-11-28 17:30:48.603398 -03:00 | INFO   | Started airline on port 1025 with sucess rate 0.7 
-2021-11-28 17:30:51.451949 -03:00 | INFO   | Received 507 and the operation succeeded 
