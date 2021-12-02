@@ -17,16 +17,15 @@ pub enum LogLevel {
     FINISH,
 }
 
-/// A log consists of a message and their log level
-pub type LoggerMsg = (String, LogLevel);
-
 pub struct Logger {
+    name: String,
     filename: String,
 }
 
 impl Clone for Logger {
     fn clone(&self) -> Self {
         Logger {
+            name: self.name.clone(),
             filename: self.filename.clone(),
         }
     }
@@ -34,20 +33,21 @@ impl Clone for Logger {
 
 impl Logger {
     /// Creates a new logger
-    pub fn new(filename: String) -> Self {
+    pub fn new(name: String) -> Self {
         std::fs::create_dir_all(PREFIX_PATH).expect("Couldn't create log directory");
         let mut filename_path = PREFIX_PATH.to_string();
-        filename_path.push_str(filename.as_str());
+        filename_path.push_str(name.as_str());
         filename_path.push_str(".log");
 
         let logger = Logger {
+            name: name.clone(),
             filename: filename_path.clone(),
         };
         OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
-            .open(filename_path.as_str())
+            .open(filename_path)
             .expect("Failed to create log file");
         logger.log("START".to_string(), LogLevel::TRACE);
         logger
@@ -59,9 +59,11 @@ impl Logger {
             .append(true)
             .open(self.filename.clone().as_str())
             .expect("Unable to open log file");
+
         if let LogLevel::INFO = loglevel {
-            println!("{}", msg)
+            println!("{}: {}", self.name, msg)
         };
+
         // We want to have the loglevel on exactly N characters, so that `| TRACE  |` and `|  INFO  |` and `| FINISH |` have the same width.
         // This formatting only works with strings, not debug strings
         // i.e. {:^7} works, but {:^7?} does not

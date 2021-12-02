@@ -1,28 +1,26 @@
 mod agent;
+mod communication;
 pub mod logger;
 mod utils;
 use agent::Agent;
-use rand::Rng;
-use serde_yaml::{self, Sequence};
+use communication::{data_msg_from_bytes, DataMsgBytes, ABORT, COMMIT, PREPARE};
 use std::io::Write;
 use std::{
     io::{BufReader, Read},
     net::{SocketAddr, TcpListener},
     thread::{self},
 };
-use utils::{agent_get_name, agent_get_port, agent_get_success_rate, data_msg_from_bytes, DataMsg};
+use utils::{agent_get_name, agent_get_port, agent_get_success_rate, get_agents};
 
 fn create_listener(agent: Agent) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], agent.get_port()));
+    let addr = SocketAddr::from(([127, 0, 0, 1], agent.port));
     let listener = TcpListener::bind(addr)
-        .unwrap_or_else(|_| panic!("listener on port {} failed", agent.get_port()));
+        .unwrap_or_else(|_| panic!("listener on port {} failed", agent.port));
 
     agent.log(
         format!(
-            "Started {} on port {} with sucess rate {}",
-            agent.get_name(),
-            agent.get_port(),
-            agent.get_success_rate()
+            "Started on port {} with sucess rate {}",
+            agent.port, agent.success_rate
         ),
         logger::LogLevel::INFO,
     );
@@ -34,49 +32,44 @@ fn create_listener(agent: Agent) {
             .expect("Couldn't read connection peer addr");
         let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
 
-        let name = agent.get_name();
-        let success_rate = agent.get_success_rate();
         let agent_clone = agent.clone();
 
         thread::Builder::new()
-            .name(format!("{} - {}", name, peer.port()))
+            .name(format!("{} - {}", agent_clone.name, peer.port()))
             .spawn(move || loop {
-                let mut buffer: [u8; 9] = [0; 9];
+                let mut buffer: DataMsgBytes = [0; 9];
                 reader
                     .read_exact(&mut buffer)
                     .expect("Couldn't read from stream");
 
-                let data_msg: DataMsg = data_msg_from_bytes(buffer);
+                let data_msg = data_msg_from_bytes(buffer);
 
-                let result: bool = rand::thread_rng().gen_bool(success_rate);
                 agent_clone.log(
-                    format!(
-                        "{} | {} | {} | {}",
-                        data_msg.transaction_id,
-                        data_msg.opcode,
-                        data_msg.data,
-                        if result { "OK" } else { "ERR" }
-                    ),
+                    format!("Received {:?} from {}", data_msg, peer),
                     logger::LogLevel::INFO,
                 );
 
+                let result = match data_msg.opcode {
+                    PREPARE => agent_clone.prepare(),
+                    COMMIT => agent_clone.commit(),
+                    ABORT => agent_clone.abort(),
+                    _ => panic!("Unknown opcode"),
+                };
+
                 stream
-                    .write_all(&[if result { 1 } else { 0 }])
+                    .write_all(&[result])
                     .expect("Couldn't write to stream");
             })
             .expect("agent connection thread creation failed");
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let agents_config =
-        std::fs::File::open("src/agents.yaml").expect("Couldn't open agents config file");
-    let agents: Sequence =
-        serde_yaml::from_reader(agents_config).expect("Couldn't parse agents config yaml");
+fn main() {
+    let agents = get_agents();
 
     let mut agents_threads = vec![];
     for agent in agents {
-        let a = Agent::new(
+        let agent = Agent::new(
             agent_get_name(&agent),
             agent_get_port(&agent),
             agent_get_success_rate(&agent),
@@ -84,9 +77,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         agents_threads.push(
             thread::Builder::new()
-                .name(a.get_name())
+                .name(agent.name.clone())
                 .spawn(move || {
-                    create_listener(a);
+                    create_listener(agent);
                 })
                 .expect("agent thread creation failed"),
         )
@@ -95,6 +88,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for thread in agents_threads {
         thread.join().expect("agent thread join failed");
     }
-
-    Ok(())
 }
