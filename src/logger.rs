@@ -2,6 +2,8 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 
+const PREFIX_PATH: &str = "logs/";
+
 /// Logging file to be created (or entirely rewritten) on each run
 
 /// Simple logging levels for our logger
@@ -33,7 +35,8 @@ impl Clone for Logger {
 impl Logger {
     /// Creates a new logger
     pub fn new(filename: String) -> Self {
-        let mut filename_path = "logs/".to_string();
+        std::fs::create_dir_all(PREFIX_PATH).expect("Couldn't create log directory");
+        let mut filename_path = PREFIX_PATH.to_string();
         filename_path.push_str(filename.as_str());
         filename_path.push_str(".log");
 
