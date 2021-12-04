@@ -32,8 +32,9 @@ fn create_listener(agent: Agent) {
             .expect("Couldn't read connection peer addr");
         let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
 
-        let agent_clone = agent.clone();
+        let mut agent_clone = agent.clone();
 
+        // TODO: hace falta que esto sea un thread?
         thread::Builder::new()
             .name(format!("{} - {}", agent_clone.name, peer.port()))
             .spawn(move || loop {
@@ -50,9 +51,9 @@ fn create_listener(agent: Agent) {
                 );
 
                 let result = match data_msg.opcode {
-                    PREPARE => agent_clone.prepare(),
-                    COMMIT => agent_clone.commit(),
-                    ABORT => agent_clone.abort(),
+                    PREPARE => agent_clone.prepare(data_msg.transaction_id),
+                    COMMIT => agent_clone.commit(data_msg.transaction_id),
+                    ABORT => agent_clone.abort(data_msg.transaction_id),
                     _ => panic!("Unknown opcode"),
                 };
 

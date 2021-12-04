@@ -1,5 +1,6 @@
 use rand::Rng;
-
+use std::collections::HashMap;
+use crate::communication::{ABORT, COMMIT, PREPARE};
 use crate::logger::{LogLevel, Logger};
 
 pub struct Agent {
@@ -7,6 +8,7 @@ pub struct Agent {
     pub port: u16,
     pub success_rate: f64,
     pub logger: Logger,
+    transactions_state: HashMap<u32, u8>,
 }
 
 impl Clone for Agent {
@@ -16,6 +18,7 @@ impl Clone for Agent {
             port: self.port,
             success_rate: self.success_rate,
             logger: self.logger.clone(),
+            transactions_state: self.transactions_state.clone(),
         }
     }
 }
@@ -27,6 +30,7 @@ impl Agent {
             port: port,
             success_rate: success_rate,
             logger: Logger::new(name),
+            transactions_state: HashMap::new(),
         }
     }
 
@@ -34,14 +38,21 @@ impl Agent {
         self.logger.log(msg, loglevel);
     }
 
-    pub fn prepare(&self) -> u8 {
-        let result = rand::thread_rng().gen_bool(self.success_rate);
-        result as u8
+    pub fn prepare(&mut self, transaction_id: u32) -> u8 {
+        let success = rand::thread_rng().gen_bool(self.success_rate);
+        self.log(format!("Preparing transaction {} at {}", transaction_id, self.name), LogLevel::INFO);
+        self.transactions_state.insert(transaction_id, PREPARE);
+        if success {COMMIT} else {ABORT}
     }
-    pub fn commit(&self) -> u8 {
-        1
+
+    pub fn commit(&mut self, transaction_id: u32) -> u8 {
+        self.log(format!("Committing transaction {}", transaction_id), LogLevel::INFO);
+        self.transactions_state.insert(transaction_id, COMMIT);
+        COMMIT
     }
-    pub fn abort(&self) -> u8 {
-        1
+    pub fn abort(&mut self, transaction_id: u32) -> u8 {
+        self.log(format!("Aborting transaction {}", transaction_id), LogLevel::INFO);
+        self.transactions_state.insert(transaction_id, ABORT);
+        ABORT
     }
 }
