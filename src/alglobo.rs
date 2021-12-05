@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
@@ -20,16 +19,13 @@ use utils::get_agents;
 
 use utils::{agent_get_name, agent_get_port, csv_to_prices};
 
-const TIMEOUT: Duration = Duration::from_secs(10);
-
 fn main() {
     // TODO: Make get_agents() return a vector of agents instead of a serde Sequence
     // We have to do everything in this function just to not import Sequence from sede
     let agents = get_agents();
     let agents_clone = agents.clone();
-    let n_agents = agents.len();
 
-    let prices = csv_to_prices("src/prices.csv", &agents);
+    let prices = csv_to_prices("src/prices.csv");
 
     let mut agent_clients: Vec<TcpStream> = Vec::new();
     for agent in agents_clone.iter() {

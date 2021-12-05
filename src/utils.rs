@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 
@@ -33,7 +32,7 @@ pub fn agent_get_success_rate(agent: &serde_yaml::Value) -> f64 {
         .expect("Agent successrate must be a float")
 }
 
-pub fn csv_to_prices(filename: &str, agents: &Sequence) -> Vec<Vec<u32>> {
+pub fn csv_to_prices(filename: &str) -> Vec<Vec<u32>> {
     let mut file = File::open(filename).expect("File not found");
     let mut contents = String::new();
 
