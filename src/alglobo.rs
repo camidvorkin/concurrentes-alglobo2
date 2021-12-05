@@ -43,10 +43,12 @@ fn main() {
     for (transaction_id, price) in prices.iter().enumerate() {
         for (j, agent) in agents.iter().enumerate() {
             let p = price[j];
-            // borrow client_agent[j]
-            // let client = &agent_clients[j];
-            let mut client = agent_clients.try_clone().unwrap();
-            thread::Builder::new()
+
+            let mut agent_client = agent_clients[j].try_clone().expect("Could not clone agent client");
+            let responses_clone = responses.clone();
+
+            // TODO: Handle thread response. Maybe do a join instead of using a condvar?
+            let _ = thread::Builder::new()
                 .name(format!("{} - Transaction {}", agent_get_name(agent), transaction_id))
                 .spawn(move || {
                     let msg = DataMsg {
@@ -55,16 +57,16 @@ fn main() {
                         data: p
                     };
 
-                    client.write_all(&data_msg_to_bytes(&msg)).expect("write failed");
+                    agent_client.write_all(&data_msg_to_bytes(&msg)).expect("write failed");
                     
                     // TODO: sacar sleep
-                    // sleep(Duration::from_millis(1000));
+                    sleep(Duration::from_millis(1000));
 
                     let mut response = [0u8; 1];
-                    client.read_exact(&mut response).expect("read failed");
+                    agent_client.read_exact(&mut response).expect("read failed");
                     println!("Received {:?}", response);
                     {
-                        responses.0.lock().unwrap().push(Some(response));
+                        responses_clone.0.lock().unwrap().push(Some(response));
                     }
                 });
         }
@@ -77,6 +79,8 @@ fn main() {
                 data: price[j]
             };
             agent_clients[j].write_all(&data_msg_to_bytes(&msg)).expect("write failed");
+            let mut response = [0u8; 1];
+            agent_clients[j].read_exact(&mut response).expect("read failed");
         }
     }
 }
