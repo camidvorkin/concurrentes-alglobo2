@@ -1,18 +1,20 @@
+#![forbid(unsafe_code)]
+#![allow(dead_code)]
 mod agent;
 mod communication;
 pub mod logger;
 mod utils;
 use agent::Agent;
-use communication::{data_msg_from_bytes, DataMsgBytes, ABORT, COMMIT, PREPARE};
+use communication::{DataMsg, DataMsgBytes, ABORT, COMMIT, FINISH, PREPARE};
 use std::io::Write;
 use std::{
     io::{BufReader, Read},
     net::{SocketAddr, TcpListener},
-    thread::{self},
+    thread,
 };
 use utils::{agent_get_name, agent_get_port, agent_get_success_rate, get_agents};
 
-fn create_listener(agent: Agent) {
+fn create_listener(mut agent: Agent) {
     let addr = SocketAddr::from(([127, 0, 0, 1], agent.port));
     let listener = TcpListener::bind(addr)
         .unwrap_or_else(|_| panic!("listener on port {} failed", agent.port));
@@ -25,43 +27,34 @@ fn create_listener(agent: Agent) {
         logger::LogLevel::INFO,
     );
 
-    for stream in listener.incoming() {
-        let mut stream = stream.expect("failed to read stream");
-        let peer = stream
-            .peer_addr()
-            .expect("Couldn't read connection peer addr");
-        let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
+    'listener: for stream in listener.incoming() {
+        loop {
+            let mut stream = stream.as_ref().expect("failed to read stream");
+            let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
 
-        let mut agent_clone = agent.clone();
+            let mut buffer: DataMsgBytes = Default::default();
+            reader
+                .read_exact(&mut buffer)
+                .expect("Couldn't read from stream");
 
-        // TODO: hace falta que esto sea un thread?
-        thread::Builder::new()
-            .name(format!("{} - {}", agent_clone.name, peer.port()))
-            .spawn(move || loop {
-                let mut buffer: DataMsgBytes = [0; 9];
-                reader
-                    .read_exact(&mut buffer)
-                    .expect("Couldn't read from stream");
+            let data_msg = DataMsg::from_bytes(buffer);
 
-                let data_msg = data_msg_from_bytes(buffer);
+            let result = match data_msg.opcode {
+                PREPARE => agent.prepare(data_msg.transaction_id, data_msg.data),
+                COMMIT => agent.commit(data_msg.transaction_id),
+                ABORT => agent.abort(data_msg.transaction_id),
+                FINISH => agent.finish(),
+                _ => panic!("Unknown opcode"),
+            };
 
-                agent_clone.log(
-                    format!("Received {:?} from {}", data_msg, peer),
-                    logger::LogLevel::INFO,
-                );
+            stream
+                .write_all(&[result])
+                .expect("Couldn't write to stream");
 
-                let result = match data_msg.opcode {
-                    PREPARE => agent_clone.prepare(data_msg.transaction_id),
-                    COMMIT => agent_clone.commit(data_msg.transaction_id),
-                    ABORT => agent_clone.abort(data_msg.transaction_id),
-                    _ => panic!("Unknown opcode"),
-                };
-
-                stream
-                    .write_all(&[result])
-                    .expect("Couldn't write to stream");
-            })
-            .expect("agent connection thread creation failed");
+            if data_msg.opcode == FINISH {
+                break 'listener;
+            };
+        }
     }
 }
 

@@ -1,7 +1,7 @@
+use crate::communication::{ABORT, ACK, COMMIT, PAYMENT_ERR, PAYMENT_OK, PREPARE};
+use crate::logger::{LogLevel, Logger};
 use rand::Rng;
 use std::collections::HashMap;
-use crate::communication::{ABORT, COMMIT, PREPARE};
-use crate::logger::{LogLevel, Logger};
 
 pub struct Agent {
     pub name: String,
@@ -27,8 +27,8 @@ impl Agent {
     pub fn new(name: String, port: u16, success_rate: f64) -> Self {
         Agent {
             name: name.clone(),
-            port: port,
-            success_rate: success_rate,
+            port,
+            success_rate,
             logger: Logger::new(name),
             transactions_state: HashMap::new(),
         }
@@ -38,22 +38,42 @@ impl Agent {
         self.logger.log(msg, loglevel);
     }
 
-    pub fn prepare(&mut self, transaction_id: u32) -> u8 {
-        let success = rand::thread_rng().gen_bool(self.success_rate);
-        let msg = if success { "Success" } else { "Failed" };
-        self.log(format!("Preparing transaction {} at {}: {}", transaction_id, self.name, msg), LogLevel::INFO);
+    pub fn prepare(&mut self, transaction_id: u32, data: u32) -> u8 {
+        self.log(
+            format!("Transaction {} | PREPARE", transaction_id),
+            LogLevel::INFO,
+        );
         self.transactions_state.insert(transaction_id, PREPARE);
-        if success {COMMIT} else {ABORT}
+
+        let success = rand::thread_rng().gen_bool(self.success_rate);
+        if success {
+            self.log(format!("Payment of ${} | OK", data), LogLevel::INFO);
+            PAYMENT_OK
+        } else {
+            self.log(format!("Payment of ${} | ERR", data), LogLevel::INFO);
+            PAYMENT_ERR
+        }
     }
 
     pub fn commit(&mut self, transaction_id: u32) -> u8 {
-        self.log(format!("Committing transaction {}", transaction_id), LogLevel::INFO);
+        self.log(
+            format!("Transaction {} | COMMIT", transaction_id),
+            LogLevel::INFO,
+        );
         self.transactions_state.insert(transaction_id, COMMIT);
-        COMMIT
+        ACK
     }
+
     pub fn abort(&mut self, transaction_id: u32) -> u8 {
-        self.log(format!("Aborting transaction {}", transaction_id), LogLevel::INFO);
+        self.log(
+            format!("Transaction {} | ABORT", transaction_id),
+            LogLevel::INFO,
+        );
         self.transactions_state.insert(transaction_id, ABORT);
-        ABORT
+        ACK
+    }
+
+    pub fn finish(&mut self) -> u8 {
+        ACK
     }
 }
