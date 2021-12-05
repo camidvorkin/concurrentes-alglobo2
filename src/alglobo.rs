@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
 use std::collections::HashMap;
+use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
@@ -20,7 +21,7 @@ use logger::Logger;
 
 use std::net::SocketAddr;
 
-use utils::{csv_to_prices, get_agents_ports};
+use utils::{create_empty_csv, csv_to_prices, get_agents_ports, write_to_csv};
 
 fn broadcast(
     transaction_id: usize,
@@ -79,9 +80,13 @@ fn broadcast(
 fn main() {
     let agents_ports = get_agents_ports();
 
-    // TODO: Hacer que se pueda correr con otro nombre de archivo (para poder
-    // recorrerlo en las transacciones abortadas en llamadas anteriores)
-    let prices = csv_to_prices("src/prices.csv");
+    let prices_file = match env::args().nth(1) {
+        Some(val) => val,
+        None => "src/prices.csv".to_string(),
+    };
+    let prices = csv_to_prices(&prices_file);
+
+    let retry_file = create_empty_csv("src/prices-retry.csv");
     let logger = Logger::new("alglobo".to_string());
     let mut transactions_state: HashMap<u32, u8> = HashMap::new();
 
@@ -139,12 +144,13 @@ fn main() {
             &agent_clients,
         );
 
+        if operation == ABORT {
+            write_to_csv(&retry_file, transaction_prices);
+        }
+
         // This sleep is only for debugging purposes
         sleep(Duration::from_millis(1000));
     }
-
-    // TODO: Crear un archivo con todas las transacciones abortadas, para poder
-    // reintentar a manopla despues
 
     let dummy_data = vec![0; agent_clients.len()];
     let (_lock, _cvar) = &*broadcast(0, &dummy_data, FINISH, &agent_clients);

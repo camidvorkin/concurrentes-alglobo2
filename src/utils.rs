@@ -1,5 +1,5 @@
-use std::fs::File;
-use std::io::Read;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 
 use serde_yaml::{self, Sequence};
 use std::convert::TryInto;
@@ -54,4 +54,25 @@ pub fn csv_to_prices(filename: &str) -> Vec<Vec<u32>> {
         result.push(price);
     }
     result
+}
+
+pub fn create_empty_csv(filename: &str) -> File {
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(filename)
+        .expect("Failed to create empty csv file")
+}
+
+pub fn write_to_csv(mut file: &File, numbers: &[u32]) {
+    let line = numbers
+        .iter()
+        .map(|&n| n.to_string())
+        .collect::<Vec<String>>()
+        .join(",");
+    file.write_all(line.as_bytes())
+        .expect("Failed to write to csv file");
+    file.write_all("\n".as_bytes())
+        .expect("Failed to write to csv file");
 }

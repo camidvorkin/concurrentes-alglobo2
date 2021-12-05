@@ -13,8 +13,6 @@ pub enum LogLevel {
     TRACE,
     /// INFO logs are printed to the console and are useful for any domain specific information
     INFO,
-    /// FINISH logs are used to signalize that we want to stop our processing and the program is shutting down
-    FINISH,
 }
 
 pub struct Logger {
