@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
+use std::collections::HashMap;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
@@ -14,12 +15,12 @@ mod utils;
 
 use communication::FINISH;
 use communication::{DataMsg, ABORT, COMMIT, PAYMENT_OK, PREPARE};
+use logger::LogLevel;
+use logger::Logger;
 
 use std::net::SocketAddr;
 
 use utils::{csv_to_prices, get_agents_ports};
-
-const _TIMEOUT: Duration = Duration::from_secs(10);
 
 fn broadcast(
     transaction_id: usize,
@@ -77,7 +78,12 @@ fn broadcast(
 
 fn main() {
     let agents_ports = get_agents_ports();
+
+    // TODO: Hacer que se pueda correr con otro nombre de archivo (para poder
+    // recorrerlo en las transacciones abortadas en llamadas anteriores)
     let prices = csv_to_prices("src/prices.csv");
+    let logger = Logger::new("alglobo".to_string());
+    let mut transactions_state: HashMap<u32, u8> = HashMap::new();
 
     let mut agent_clients = Vec::new();
     for port in &agents_ports {
@@ -88,6 +94,12 @@ fn main() {
     }
 
     for (transaction_id, transaction_prices) in prices.iter().enumerate() {
+        logger.log(
+            format!("Transaction {} | PREPARE", transaction_id),
+            LogLevel::TRACE,
+        );
+        transactions_state.insert(transaction_id as u32, PREPARE);
+
         let (lock, _cvar) =
             &*broadcast(transaction_id, transaction_prices, PREPARE, &agent_clients);
 
@@ -98,6 +110,27 @@ fn main() {
             .all(|&opt| opt[0] == PAYMENT_OK);
 
         let operation = if all_oks { COMMIT } else { ABORT };
+        logger.log(
+            format!(
+                "Payment of {:?} | {}",
+                transaction_prices,
+                if operation == COMMIT { "OK" } else { "ERR" },
+            ),
+            LogLevel::INFO,
+        );
+        logger.log(
+            format!(
+                "Transaction {} | {}",
+                transaction_id,
+                if operation == COMMIT {
+                    "COMMIT"
+                } else {
+                    "ABORT"
+                },
+            ),
+            LogLevel::TRACE,
+        );
+        transactions_state.insert(transaction_id as u32, operation);
 
         let (_lock, _cvar) = &*broadcast(
             transaction_id,
@@ -109,6 +142,9 @@ fn main() {
         // This sleep is only for debugging purposes
         sleep(Duration::from_millis(1000));
     }
+
+    // TODO: Crear un archivo con todas las transacciones abortadas, para poder
+    // reintentar a manopla despues
 
     let dummy_data = vec![0; agent_clients.len()];
     let (_lock, _cvar) = &*broadcast(0, &dummy_data, FINISH, &agent_clients);

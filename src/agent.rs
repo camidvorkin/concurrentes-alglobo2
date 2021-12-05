@@ -41,7 +41,7 @@ impl Agent {
     pub fn prepare(&mut self, transaction_id: u32, data: u32) -> u8 {
         self.log(
             format!("Transaction {} | PREPARE", transaction_id),
-            LogLevel::INFO,
+            LogLevel::TRACE,
         );
         self.transactions_state.insert(transaction_id, PREPARE);
 
@@ -58,7 +58,7 @@ impl Agent {
     pub fn commit(&mut self, transaction_id: u32) -> u8 {
         self.log(
             format!("Transaction {} | COMMIT", transaction_id),
-            LogLevel::INFO,
+            LogLevel::TRACE,
         );
         self.transactions_state.insert(transaction_id, COMMIT);
         ACK
@@ -67,7 +67,7 @@ impl Agent {
     pub fn abort(&mut self, transaction_id: u32) -> u8 {
         self.log(
             format!("Transaction {} | ABORT", transaction_id),
-            LogLevel::INFO,
+            LogLevel::TRACE,
         );
         self.transactions_state.insert(transaction_id, ABORT);
         ACK
