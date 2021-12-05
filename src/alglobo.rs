@@ -28,7 +28,6 @@ fn main() {
     let agents = get_agents();
     let agents_clone = agents.clone();
     let n_agents = agents.len();
-    let responses = Arc::new(( Mutex::new(vec![None; n_agents]), Condvar::new()));
 
     let prices = csv_to_prices("src/prices.csv", &agents);
 
@@ -41,6 +40,7 @@ fn main() {
     }
 
     for (transaction_id, price) in prices.iter().enumerate() {
+        let responses = Arc::new(( Mutex::new(vec![]), Condvar::new()));
         for (j, agent) in agents.iter().enumerate() {
             let p = price[j];
 
@@ -56,6 +56,7 @@ fn main() {
                         opcode: PREPARE,
                         data: p
                     };
+                    let (lock, cvar) = &*responses_clone;
 
                     agent_client.write_all(&data_msg_to_bytes(&msg)).expect("write failed");
                     
@@ -66,12 +67,20 @@ fn main() {
                     agent_client.read_exact(&mut response).expect("read failed");
                     println!("Received {:?}", response);
                     {
-                        responses_clone.0.lock().unwrap().push(Some(response));
+                        lock.lock().expect("Unable to lock responses").push(Some(response));
+                        cvar.notify_all();
                     }
                 });
         }
-        // responses.1.wait_timeout_while(self.responses.0.lock().unwrap(), TIMEOUT, |responses| responses.iter().any(Option::is_none));
-        let response = if responses.0.lock().unwrap().iter().all(|opt| opt.is_some() && opt.unwrap()[0] == COMMIT) {COMMIT} else {ABORT};
+
+        let (lock, cvar) = &*responses;
+
+        let _ = cvar.wait_while(lock.lock().expect("Unable to lock responses"), |responses| {
+            responses.len() != 3
+        }).expect("Error on wait condvar");
+
+        let response = if lock.lock().expect("Unable to lock responses").iter().all(|opt| opt.expect("Unable to get response")[0] == COMMIT) {COMMIT} else {ABORT};
+        println!("Transaction {}: {}", transaction_id, response);
         for (j, _agent) in agents.iter().enumerate() {
             let msg = DataMsg {
                 transaction_id: transaction_id as u32,

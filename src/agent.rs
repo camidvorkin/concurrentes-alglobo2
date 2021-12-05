@@ -40,7 +40,7 @@ impl Agent {
 
     pub fn prepare(&mut self, transaction_id: u32) -> u8 {
         let success = rand::thread_rng().gen_bool(self.success_rate);
-        let msg = if success { "Failed" } else { "Success" };
+        let msg = if success { "Success" } else { "Failed" };
         self.log(format!("Preparing transaction {} at {}: {}", transaction_id, self.name, msg), LogLevel::INFO);
         self.transactions_state.insert(transaction_id, PREPARE);
         if success {COMMIT} else {ABORT}
