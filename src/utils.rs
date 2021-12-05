@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 
@@ -10,6 +9,16 @@ const AGENTS_FILE: &str = "src/agents.yaml";
 pub fn get_agents() -> Sequence {
     let agents_config = std::fs::File::open(AGENTS_FILE).expect("Couldn't open agents config file");
     serde_yaml::from_reader(agents_config).expect("Couldn't parse agents config yaml")
+}
+
+pub fn get_agents_ports() -> Vec<u16> {
+    let agents = get_agents();
+    let mut ports = Vec::new();
+    for agent in agents {
+        let port = agent_get_port(&agent);
+        ports.push(port);
+    }
+    ports
 }
 
 pub fn agent_get_port(agent: &serde_yaml::Value) -> u16 {
@@ -33,7 +42,7 @@ pub fn agent_get_success_rate(agent: &serde_yaml::Value) -> f64 {
         .expect("Agent successrate must be a float")
 }
 
-pub fn csv_to_prices(filename: &str, agents: &Sequence) -> Vec<Vec<u32>> {
+pub fn csv_to_prices(filename: &str) -> Vec<Vec<u32>> {
     let mut file = File::open(filename).expect("File not found");
     let mut contents = String::new();
 
