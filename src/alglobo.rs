@@ -3,6 +3,7 @@ use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -46,7 +47,6 @@ fn create_connection(port: u16, agent_name: String, prices: Vec<HashMap<String, 
 
 fn main() {
     let agents_ports = get_agents_ports();
-    let responses = Arc::new((Mutex::new(vec![None; agents_ports.len()]), Condvar::new()));
 
     let prices = csv_to_prices("src/prices.csv");
 
@@ -59,49 +59,76 @@ fn main() {
     }
 
     for (transaction_id, price) in prices.iter().enumerate() {
-        // TODO: que se envien los tres mensajes en paralelo
-        responses.0.lock().unwrap().clear();
-        for (j, mut agent_client) in agent_clients.iter().enumerate() {
-            let msg = DataMsg {
-                transaction_id: transaction_id as u32,
-                opcode: PREPARE,
-                data: price[j],
-            };
+        let responses = Arc::new((Mutex::new(vec![]), Condvar::new()));
+        for (j, mut agent) in agent_clients.iter().enumerate() {
+            let p = price[j];
 
-            agent_client
-                .write_all(&data_msg_to_bytes(&msg))
-                .expect("write failed");
+            let mut agent_client = agent_clients[j]
+                .try_clone()
+                .expect("Could not clone agent client");
+            let responses_clone = responses.clone();
 
-            // TODO: sacar sleep
-            sleep(Duration::from_millis(1000));
+            // TODO: Handle thread response. Maybe do a join instead of using a condvar?
+            let _ = thread::Builder::new()
+                .name(format!("Transaction {}", transaction_id))
+                .spawn(move || {
+                    let msg = DataMsg {
+                        transaction_id: transaction_id as u32,
+                        opcode: PREPARE,
+                        data: p,
+                    };
+                    let (lock, cvar) = &*responses_clone;
 
-            let mut response = [0u8; 1];
-            agent_client.read_exact(&mut response).expect("read failed");
-            println!("Received {:?}", response);
-            responses.0.lock().unwrap().push(Some(response));
+                    agent_client
+                        .write_all(&data_msg_to_bytes(&msg))
+                        .expect("write failed");
+
+                    // TODO: sacar sleep
+                    sleep(Duration::from_millis(1000));
+
+                    let mut response = [0u8; 1];
+                    agent_client.read_exact(&mut response).expect("read failed");
+                    println!("Received {:?}", response);
+                    {
+                        lock.lock()
+                            .expect("Unable to lock responses")
+                            .push(Some(response));
+                        cvar.notify_all();
+                    }
+                });
         }
 
-        let response = if responses
-            .0
+        let (lock, cvar) = &*responses;
+
+        let _ = cvar
+            .wait_while(
+                lock.lock().expect("Unable to lock responses"),
+                |responses| responses.len() != 3,
+            )
+            .expect("Error on wait condvar");
+
+        let response = if lock
             .lock()
-            .unwrap()
+            .expect("Unable to lock responses")
             .iter()
-            .all(|opt| opt.is_some() && opt.unwrap()[0] == COMMIT)
+            .all(|opt| opt.expect("Unable to get response")[0] == COMMIT)
         {
             COMMIT
         } else {
             ABORT
         };
-
-        for (j, mut agent_client) in agent_clients.iter().enumerate() {
+        println!("Transaction {}: {}", transaction_id, response);
+        for (j, mut agent) in agent_clients.iter().enumerate() {
             let msg = DataMsg {
                 transaction_id: transaction_id as u32,
                 opcode: response,
                 data: price[j],
             };
-            agent_client
+            agent
                 .write_all(&data_msg_to_bytes(&msg))
                 .expect("write failed");
+            let mut response = [0u8; 1];
+            agent.read_exact(&mut response).expect("read failed");
         }
     }
 }
