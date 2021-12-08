@@ -31,10 +31,15 @@ fn broadcast(
     transaction_prices: &[u32],
     operation: u8,
     agent_clients: &[TcpStream],
+    im_alive: &Arc<AtomicBool>,
+    logger: &Logger,
 ) -> (Vec<[u8; 1]>, bool) {
     let responses = Arc::new((Mutex::new(vec![]), Condvar::new()));
 
     for (i, agent_client) in agent_clients.iter().enumerate() {
+        let im_alive_clone = im_alive.clone();
+        let logger_clone = logger.clone();
+
         let mut agent_client_clone = agent_client
             .try_clone()
             .expect("Could not clone agent client");
@@ -51,12 +56,23 @@ fn broadcast(
             .spawn(move || {
                 agent_client_clone
                     .write_all(&DataMsg::to_bytes(&msg))
-                    .expect("write failed");
+                    .unwrap_or_else(|_| {
+                        im_alive_clone.store(false, Ordering::SeqCst);
+                    });
 
                 let mut response: [u8; 1] = Default::default();
                 agent_client_clone
                     .read_exact(&mut response)
-                    .expect("read failed");
+                    .unwrap_or_else(|_| {
+                        im_alive_clone.store(false, Ordering::SeqCst);
+                    });
+
+                if !im_alive_clone.load(Ordering::SeqCst) {
+                    logger_clone.log(
+                        "Connection with agent suddenly closed".to_string(),
+                        LogLevel::INFO,
+                    )
+                }
 
                 let (lock, cvar) = &*responses_clone;
                 lock.lock()
@@ -82,10 +98,10 @@ fn broadcast(
 
 fn main() {
     let im_alive = Arc::new(AtomicBool::new(true));
-    let im_alive_clone = im_alive.clone();
+    let im_alive_clone_ctrlc = im_alive.clone();
 
     ctrlc::set_handler(move || {
-        im_alive_clone.store(false, Ordering::SeqCst);
+        im_alive_clone_ctrlc.store(false, Ordering::SeqCst);
     })
     .expect("Error setting Ctrl-C handler");
 
@@ -114,18 +130,27 @@ fn main() {
             break;
         };
 
+        let im_alive_clone_agents = im_alive.clone();
+        let logger_clone = logger.clone();
+
         logger.log(
             format!("Transaction {} | PREPARE", transaction_id),
             LogLevel::TRACE,
         );
         transactions_state.insert(transaction_id as u32, PREPARE);
 
-        let (all_responses, is_timeout) =
-            broadcast(transaction_id, transaction_prices, PREPARE, &agent_clients);
+        let (all_responses, is_timeout) = broadcast(
+            transaction_id,
+            transaction_prices,
+            PREPARE,
+            &agent_clients,
+            &im_alive_clone_agents,
+            &logger_clone,
+        );
 
         let all_oks = all_responses.iter().all(|&opt| opt[0] == PAYMENT_OK);
 
-        let operation = if all_oks && !is_timeout {
+        let operation = if all_oks && !is_timeout && im_alive.load(Ordering::SeqCst) {
             COMMIT
         } else {
             ABORT
@@ -152,21 +177,24 @@ fn main() {
         );
         transactions_state.insert(transaction_id as u32, operation);
 
+        if operation == ABORT {
+            write_to_csv(&retry_file, transaction_prices);
+        }
+
         let (_all_responses, _is_timeout) = broadcast(
             transaction_id,
             transaction_prices,
             operation,
             &agent_clients,
+            &im_alive_clone_agents,
+            &logger_clone,
         );
-
-        if operation == ABORT {
-            write_to_csv(&retry_file, transaction_prices);
-        }
 
         // This sleep is only for debugging purposes
         sleep(Duration::from_millis(1000));
     }
 
     let dummy_data = vec![0; agent_clients.len()];
-    let (_all_responses, _is_timeout) = broadcast(0, &dummy_data, FINISH, &agent_clients);
+    let (_all_responses, _is_timeout) =
+        broadcast(0, &dummy_data, FINISH, &agent_clients, &im_alive, &logger);
 }
