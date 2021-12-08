@@ -2,3 +2,4 @@
 target
 docs/debug
 *.log
+src/prices-retry.csv
