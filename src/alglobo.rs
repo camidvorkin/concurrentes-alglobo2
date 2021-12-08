@@ -23,6 +23,8 @@ use std::net::SocketAddr;
 
 use utils::{create_empty_csv, csv_to_prices, get_agents_ports, write_to_csv};
 
+const TIMEOUT: Duration = Duration::from_secs(3);
+
 fn broadcast(
     transaction_id: usize,
     transaction_prices: &[u32],
@@ -65,15 +67,6 @@ fn broadcast(
             .expect("thread creation failed");
     }
 
-    let (lock, cvar) = &*responses;
-
-    let _ = cvar
-        .wait_while(
-            lock.lock().expect("Unable to lock responses"),
-            |responses| responses.len() != agent_clients.len(),
-        )
-        .expect("Error on wait condvar");
-
     responses
 }
 
@@ -108,13 +101,21 @@ fn main() {
         let (lock, _cvar) =
             &*broadcast(transaction_id, transaction_prices, PREPARE, &agent_clients);
 
-        let all_oks = lock
-            .lock()
-            .expect("Unable to lock responses")
-            .iter()
-            .all(|&opt| opt[0] == PAYMENT_OK);
+        let (all_responses, timeout) = _cvar
+            .wait_timeout_while(
+                lock.lock().expect("Unable to lock responses"),
+                TIMEOUT,
+                |responses| responses.len() != agent_clients.len(),
+            )
+            .expect("Error on wait condvar");
 
-        let operation = if all_oks { COMMIT } else { ABORT };
+        let all_oks = all_responses.iter().all(|&opt| opt[0] == PAYMENT_OK);
+
+        let operation = if all_oks && !timeout.timed_out() {
+            COMMIT
+        } else {
+            ABORT
+        };
         logger.log(
             format!(
                 "Payment of {:?} | {}",
