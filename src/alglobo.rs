@@ -5,6 +5,7 @@ use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::sleep;
@@ -80,6 +81,14 @@ fn broadcast(
 }
 
 fn main() {
+    let im_alive = Arc::new(AtomicBool::new(true));
+    let im_alive_clone = im_alive.clone();
+
+    ctrlc::set_handler(move || {
+        im_alive_clone.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     let agents_ports = get_agents_ports();
 
     let prices_file = match env::args().nth(1) {
@@ -101,6 +110,10 @@ fn main() {
     }
 
     for (transaction_id, transaction_prices) in prices.iter().enumerate() {
+        if !im_alive.load(Ordering::SeqCst) {
+            break;
+        };
+
         logger.log(
             format!("Transaction {} | PREPARE", transaction_id),
             LogLevel::TRACE,
