@@ -30,7 +30,7 @@ fn broadcast(
     transaction_prices: &[u32],
     operation: u8,
     agent_clients: &[TcpStream],
-) -> Arc<(Mutex<Vec<[u8; 1]>>, Condvar)> {
+) -> (Vec<[u8; 1]>, bool) {
     let responses = Arc::new((Mutex::new(vec![]), Condvar::new()));
 
     for (i, agent_client) in agent_clients.iter().enumerate() {
@@ -67,7 +67,16 @@ fn broadcast(
             .expect("thread creation failed");
     }
 
-    responses
+    let (lock, cvar) = &*responses;
+    let (all_responses, timeout) = cvar
+        .wait_timeout_while(
+            lock.lock().expect("Unable to lock responses"),
+            TIMEOUT,
+            |responses| responses.len() != agent_clients.len(),
+        )
+        .expect("Error on wait condvar");
+
+    (all_responses.to_vec(), timeout.timed_out())
 }
 
 fn main() {
@@ -98,20 +107,12 @@ fn main() {
         );
         transactions_state.insert(transaction_id as u32, PREPARE);
 
-        let (lock, _cvar) =
-            &*broadcast(transaction_id, transaction_prices, PREPARE, &agent_clients);
-
-        let (all_responses, timeout) = _cvar
-            .wait_timeout_while(
-                lock.lock().expect("Unable to lock responses"),
-                TIMEOUT,
-                |responses| responses.len() != agent_clients.len(),
-            )
-            .expect("Error on wait condvar");
+        let (all_responses, is_timeout) =
+            broadcast(transaction_id, transaction_prices, PREPARE, &agent_clients);
 
         let all_oks = all_responses.iter().all(|&opt| opt[0] == PAYMENT_OK);
 
-        let operation = if all_oks && !timeout.timed_out() {
+        let operation = if all_oks && !is_timeout {
             COMMIT
         } else {
             ABORT
@@ -138,7 +139,7 @@ fn main() {
         );
         transactions_state.insert(transaction_id as u32, operation);
 
-        let (_lock, _cvar) = &*broadcast(
+        let (_all_responses, _is_timeout) = broadcast(
             transaction_id,
             transaction_prices,
             operation,
@@ -154,5 +155,5 @@ fn main() {
     }
 
     let dummy_data = vec![0; agent_clients.len()];
-    let (_lock, _cvar) = &*broadcast(0, &dummy_data, FINISH, &agent_clients);
+    let (_all_responses, _is_timeout) = broadcast(0, &dummy_data, FINISH, &agent_clients);
 }
