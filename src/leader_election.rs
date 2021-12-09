@@ -2,7 +2,7 @@ use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write, Cursor, Read};
 use std::mem::size_of;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
@@ -18,12 +18,13 @@ fn id_to_dataaddr(id: usize) -> String { "127.0.0.1:1235".to_owned() + &*id.to_s
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
+const MSG_ACK: u8 = b'A';
 const MSG_ELECTION: u8 = b'E';
 const MSG_COORDINATOR: u8 = b'C';
 
 pub struct LeaderElection {
     id: usize,
-    socket: TcpStream,
+    socket: UdpSocket,
     leader_id: Arc<(Mutex<Option<usize>>, Condvar)>,
     stop: Arc<(Mutex<bool>, Condvar)>,
 }
@@ -46,20 +47,25 @@ impl LeaderElection {
 
     fn responder(&mut self) {
         while !*self.stop.0.lock().unwrap() {
-            let mut buf = [0; 1 + size_of::<usize>() + (6) * size_of::<usize>()]; // TODO: no hardcoded values
-            // let (size, from) = self.socket.read_exact(&mut buf).unwrap();
-            self.socket.read_exact(&mut buf).unwrap();
+            let mut buf = [0; 1 + size_of::<usize>() + (TEAM_MEMBERS+1) * size_of::<usize>()];
+            let (size, from) = self.socket.recv_from(&mut buf).unwrap();
             let (msg_type, mut ids) = self.parse_message(&buf);
 
             match msg_type {
-                MSG_ELECTION => {
+                MSG_ACK => {
+                    println!("[{}] recibí ACK de {}", self.id, from); // 
+                    *self.got_ack.0.lock().unwrap() = Some(ids[0]);
+                    self.got_ack.1.notify_all();
+                }
+                MSG_ELECTION  => {
                     println!("[{}] recibí Election de {}, ids {:?}", self.id, from, ids);
+                    self.socket.send_to(&self.ids_to_msg(MSG_ACK, &[self.id]), from).unwrap();
                     if ids.contains(&self.id) {
-                        let new_coordinator = *ids.iter().max().unwrap();
-                        self.socket.write_all(&self.ids_to_msg(MSG_COORDINATOR, &[new_coordinator, self.id]), from).unwrap();
+                        let winner = *ids.iter().max().unwrap();
+                        self.socket.send_to(&self.ids_to_msg(MSG_COORDINATOR, &[winner, self.id]), from).unwrap();
                     } else {
                         ids.push(self.id);
-                        let msg = self.ids_to_msg(MSG_ELECTION, &ids);
+                        let msg = self.ids_to_msg(MSG_ELECTION , &ids);
                         let clone = self.clone();
                         thread::spawn(move || clone.safe_send_next(&msg, clone.id));
                     }
@@ -68,6 +74,7 @@ impl LeaderElection {
                     println!("[{}] recibí nuevo coordinador de {}, ids {:?}", self.id, from, ids);
                     *self.leader_id.0.lock().unwrap() = Some(ids[0]);
                     self.leader_id.1.notify_all();
+                    self.socket.send_to(&self.ids_to_msg(MSG_ACK, &[self.id]), from).unwrap();
                     if !ids[1..].contains(&self.id) {
                         ids.push(self.id);
                         let msg = self.ids_to_msg(MSG_COORDINATOR, &ids);
@@ -113,7 +120,12 @@ impl LeaderElection {
             println!("[{}] enviando {} a {}", self.id, msg[0] as char, next_id);
             panic!("Di toda la vuelta sin respuestas")
         }
+        *self.got_ack.0.lock().unwrap() = None;
         self.socket.send_to(msg, id_to_ctrladdr(next_id));
+        let got_ack = self.got_ack.1.wait_timeout_while(self.got_ack.0.lock().unwrap(), TIMEOUT, |got_it| got_it.is_none() || got_it.unwrap() != next_id );
+        if got_ack.unwrap().1.timed_out() {
+            self.safe_send_next(msg, next_id)
+        }
     }
 
     fn next(&self, id:usize) -> usize {
