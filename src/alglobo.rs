@@ -13,10 +13,12 @@ use std::time::Duration;
 
 mod communication;
 pub mod logger;
+mod lider_election;
 mod utils;
 
 use communication::FINISH;
 use communication::{DataMsg, ABORT, COMMIT, PAYMENT_OK, PREPARE};
+use lider_election::LeaderElection;
 use logger::LogLevel;
 use logger::Logger;
 
@@ -96,7 +98,9 @@ fn broadcast(
     (all_responses.to_vec(), timeout.timed_out())
 }
 
-fn main() {
+
+fn process_payments() {
+
     let im_alive = Arc::new(AtomicBool::new(true));
     let im_alive_clone_ctrlc = im_alive.clone();
 
@@ -197,4 +201,27 @@ fn main() {
     let dummy_data = vec![0; agent_clients.len()];
     let (_all_responses, _is_timeout) =
         broadcast(0, &dummy_data, FINISH, &agent_clients, &im_alive, &logger);
+}
+
+
+fn main() {
+
+    // TODO: Listener
+    // thread::Builder::new()
+    //         .name("Listen terminal for nodes".to_string())
+    //         .spawn(move || {
+                
+    //         });
+
+    let n_nodes = 5;
+    for id in 0..n_nodes {
+        thread::Builder::new()
+            .name("Leader election".to_string())
+            .spawn(move || {
+                let node = LeaderElection::new(id);
+            });
+    }
+
+
+
 }
