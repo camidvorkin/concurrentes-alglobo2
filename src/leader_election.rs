@@ -7,7 +7,6 @@ use std::time::Duration;
 use rand::{thread_rng, Rng};
 use std::convert::TryInto;
 
-use std::collections::HashMap;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -46,6 +45,7 @@ pub struct LeaderElection {
     last_status: Arc<(Mutex<u8>, Condvar)>,
 }
 
+// TODO: Clippy warning
 #[allow(clippy::mutex_atomic)]
 impl LeaderElection {
     pub fn new(id: usize) -> LeaderElection {
@@ -56,7 +56,7 @@ impl LeaderElection {
             got_ack: Arc::new((Mutex::new(None), Condvar::new())),
             stop: Arc::new((Mutex::new(false), Condvar::new())),
             last_id: Arc::new((Mutex::new(0), Condvar::new())),
-            last_status: Arc::new((Mutex::new(b'C'), Condvar::new())),
+            last_status: Arc::new((Mutex::new(0), Condvar::new())),
         };
 
         let mut clone = ret.clone();
@@ -280,6 +280,56 @@ impl LeaderElection {
         (all_responses.to_vec(), timeout.timed_out())
     }
 
+    // TODO: Clippy warning
+    #[allow(clippy::too_many_arguments)]
+    fn finish_transaction(
+        &self,
+        operation: u8,
+        transaction_id: usize,
+        transaction_prices: &[u32],
+        agents_ports: &[u16],
+        im_alive: &Arc<AtomicBool>,
+        logger: &Logger,
+        retry_file: &std::fs::File,
+    ) {
+        logger.log(
+            format!(
+                "Payment of {:?} | {}",
+                transaction_prices,
+                if operation == COMMIT { "OK" } else { "ERR" },
+            ),
+            LogLevel::INFO,
+        );
+        logger.log(
+            format!(
+                "Transaction {} | {}",
+                transaction_id,
+                if operation == COMMIT {
+                    "ABORT"
+                } else {
+                    "COMMIT"
+                },
+            ),
+            LogLevel::TRACE,
+        );
+        if operation == ABORT {
+            write_to_csv(retry_file, transaction_prices);
+        }
+
+        let (_all_responses, _is_timeout) = self.broadcast(
+            transaction_id,
+            transaction_prices,
+            operation,
+            agents_ports as &[u16],
+            im_alive,
+            logger,
+        );
+
+        self.broadcast_last_log(operation, transaction_id);
+        *self.last_id.0.lock().unwrap() += 1;
+        *self.last_status.0.lock().unwrap() = operation;
+    }
+
     fn process_payments(&self) {
         let im_alive = Arc::new(AtomicBool::new(true));
         // let im_alive_clone_ctrlc = im_alive.clone();
@@ -299,12 +349,29 @@ impl LeaderElection {
 
         let retry_file = create_empty_csv("src/prices-retry.csv");
         let logger = Logger::new("alglobo".to_string());
-        let mut transactions_state: HashMap<u32, u8> = HashMap::new();
+
+        let last_status = *self.last_status.0.lock().unwrap();
+        if last_status == PREPARE {
+            // If the last transaction was a PREPARE, we need to ABORT it
+            let transaction_id = *self.last_id.0.lock().unwrap();
+            self.finish_transaction(
+                ABORT,
+                transaction_id,
+                &prices[transaction_id].clone(),
+                &agents_ports as &[u16],
+                &im_alive,
+                &logger,
+                &retry_file,
+            );
+        } else if last_status == COMMIT || last_status == ABORT {
+            // If the last transaction was a COMMIT or ABORT, we need to start a new one
+            *self.last_id.0.lock().unwrap() += 1;
+        }
 
         while *self.last_id.0.lock().unwrap() < prices.len() {
             if thread_rng().gen_range(0, 100) >= 75 {
                 // TODO: no es random, tras recibir un ctrl + c se cae el lider u otra combinacion de teclas para elegir cual se cae
-                println!("[{}] se cae el lider", self.id);
+                println!("[{}] se cae el lider pre-prepare", self.id);
                 break;
             }
 
@@ -322,17 +389,22 @@ impl LeaderElection {
                 format!("Transaction {} | PREPARE", transaction_id),
                 LogLevel::TRACE,
             );
-            transactions_state.insert(transaction_id as u32, PREPARE);
 
             let (all_responses, is_timeout) = self.broadcast(
                 transaction_id,
                 &transaction_prices,
                 PREPARE,
-                &agents_ports,
+                &agents_ports as &[u16],
                 &im_alive_clone_agents,
                 &logger_clone,
             );
             self.broadcast_last_log(PREPARE, transaction_id);
+
+            if thread_rng().gen_range(0, 100) >= 75 {
+                // TODO: no es random, tras recibir un ctrl + c se cae el lider u otra combinacion de teclas para elegir cual se cae
+                println!("[{}] se cae el lider post-prepare", self.id);
+                break;
+            }
 
             let all_oks = all_responses.iter().all(|&opt| opt[0] == PAYMENT_OK);
 
@@ -341,43 +413,15 @@ impl LeaderElection {
             } else {
                 ABORT
             };
-            logger.log(
-                format!(
-                    "Payment of {:?} | {}",
-                    transaction_prices,
-                    if operation == COMMIT { "OK" } else { "ERR" },
-                ),
-                LogLevel::INFO,
-            );
-            logger.log(
-                format!(
-                    "Transaction {} | {}",
-                    transaction_id,
-                    if operation == COMMIT {
-                        "COMMIT"
-                    } else {
-                        "ABORT"
-                    },
-                ),
-                LogLevel::TRACE,
-            );
-            transactions_state.insert(transaction_id as u32, operation);
-
-            if operation == ABORT {
-                write_to_csv(&retry_file, &transaction_prices);
-            }
-
-            let (_all_responses, _is_timeout) = self.broadcast(
+            self.finish_transaction(
+                operation,
                 transaction_id,
                 &transaction_prices,
-                operation,
-                &agents_ports,
-                &im_alive_clone_agents,
-                &logger_clone,
+                &agents_ports as &[u16],
+                &im_alive,
+                &logger,
+                &retry_file,
             );
-            self.broadcast_last_log(operation, transaction_id);
-
-            *self.last_id.0.lock().unwrap() += 1;
             // This sleep is only for debugging purposes
             sleep(Duration::from_millis(1000));
         }
