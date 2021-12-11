@@ -46,6 +46,7 @@ pub struct LeaderElection {
     last_status: Arc<(Mutex<u8>, Condvar)>,
 }
 
+#[allow(clippy::mutex_atomic)]
 impl LeaderElection {
     pub fn new(id: usize) -> LeaderElection {
         let mut ret = LeaderElection {
@@ -67,13 +68,19 @@ impl LeaderElection {
 
     fn responder(&mut self) {
         while !*self.stop.0.lock().unwrap() {
-            let mut buf = [0; 1 + size_of::<usize>() + (5 + 1) * size_of::<usize>()]; // todo: dynamic o harcore
-            let (_size, from) = self.socket.recv_from(&mut buf).unwrap();
+            let mut buf = [0; 1 + size_of::<usize>() + (5 + 1) * size_of::<usize>()]; // TODO: Cantidad de nodos dinamica o harcodeada
+            self.socket.set_read_timeout(Some(TIMEOUT)).unwrap();
+            let res = self.socket.recv_from(&mut buf);
+
+            if res.is_err() {
+                continue;
+            }
+            let (_size, from) = res.unwrap();
             let (msg_type, mut ids) = self.parse_message(&buf);
 
             match msg_type {
                 MSG_ACK => {
-                    println!("[{}] recibí ACK de {}", self.id, from); //
+                    println!("[{}] recibí ACK de {}", self.id, from);
                     *self.got_ack.0.lock().unwrap() = Some(ids[0]);
                     self.got_ack.1.notify_all();
                 }
@@ -165,7 +172,7 @@ impl LeaderElection {
     }
 
     fn next(&self, id: usize) -> usize {
-        (id + 1) % 5 // TODO: team members dynamic?
+        (id + 1) % 5 // TODO: Cantidad de nodos dinamica o harcodeada
     }
 
     fn find_new(&mut self) {
@@ -177,7 +184,8 @@ impl LeaderElection {
 
         self.safe_send_next(&self.ids_to_msg(MSG_ELECTION, &[self.id]), self.id);
 
-        let _ignore = self.leader_id
+        let _ignore = self
+            .leader_id
             .1
             .wait_while(self.leader_id.0.lock().unwrap(), |leader_id| {
                 leader_id.is_none()
@@ -207,19 +215,20 @@ impl LeaderElection {
         transaction_id: usize,
         transaction_prices: &[u32],
         operation: u8,
-        agent_clients: &[TcpStream],
+        agents_ports: &[u16],
         im_alive: &Arc<AtomicBool>,
         logger: &Logger,
     ) -> (Vec<[u8; 1]>, bool) {
         let responses = Arc::new((Mutex::new(vec![]), Condvar::new()));
 
-        for (i, agent_client) in agent_clients.iter().enumerate() {
+        for (i, agent_port) in agents_ports.iter().enumerate() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], *agent_port));
+            let mut client = TcpStream::connect(addr)
+                .unwrap_or_else(|_| panic!("connection with port {} failed", agent_port));
+
             let im_alive_clone = im_alive.clone();
             let logger_clone = logger.clone();
 
-            let mut agent_client_clone = agent_client
-                .try_clone()
-                .expect("Could not clone agent client");
             let responses_clone = responses.clone();
 
             let msg = DataMsg {
@@ -231,18 +240,16 @@ impl LeaderElection {
             thread::Builder::new()
                 .name(format!("Transaction {}", transaction_id))
                 .spawn(move || {
-                    agent_client_clone
+                    client
                         .write_all(&DataMsg::to_bytes(&msg))
                         .unwrap_or_else(|_| {
                             im_alive_clone.store(false, Ordering::SeqCst);
                         });
 
                     let mut response: [u8; 1] = Default::default();
-                    agent_client_clone
-                        .read_exact(&mut response)
-                        .unwrap_or_else(|_| {
-                            im_alive_clone.store(false, Ordering::SeqCst);
-                        });
+                    client.read_exact(&mut response).unwrap_or_else(|_| {
+                        im_alive_clone.store(false, Ordering::SeqCst);
+                    });
 
                     if !im_alive_clone.load(Ordering::SeqCst) {
                         logger_clone.log(
@@ -266,7 +273,7 @@ impl LeaderElection {
             .wait_timeout_while(
                 lock.lock().expect("Unable to lock responses"),
                 TIMEOUT,
-                |responses| responses.len() != agent_clients.len(),
+                |responses| responses.len() != agents_ports.len(),
             )
             .expect("Error on wait condvar");
 
@@ -275,12 +282,12 @@ impl LeaderElection {
 
     fn process_payments(&self) {
         let im_alive = Arc::new(AtomicBool::new(true));
-        let im_alive_clone_ctrlc = im_alive.clone();
+        // let im_alive_clone_ctrlc = im_alive.clone();
 
-        ctrlc::set_handler(move || {
-            im_alive_clone_ctrlc.store(false, Ordering::SeqCst);
-        })
-        .expect("Error setting Ctrl-C handler");
+        // ctrlc::set_handler(move || {
+        //     im_alive_clone_ctrlc.store(false, Ordering::SeqCst);
+        // })
+        // .expect("Error setting Ctrl-C handler");
 
         let agents_ports = get_agents_ports();
 
@@ -294,16 +301,12 @@ impl LeaderElection {
         let logger = Logger::new("alglobo".to_string());
         let mut transactions_state: HashMap<u32, u8> = HashMap::new();
 
-        let mut agent_clients = Vec::new();
-        for port in &agents_ports {
-            let addr = SocketAddr::from(([127, 0, 0, 1], *port));
-            let client = TcpStream::connect(addr)
-                .unwrap_or_else(|_| panic!("connection with port {} failed", port));
-            agent_clients.push(client);
-        }
-
-        while *self.last_id.0.lock().unwrap() < prices.len() - 1 {
-            *self.last_id.0.lock().unwrap() += 1;
+        while *self.last_id.0.lock().unwrap() < prices.len() {
+            if thread_rng().gen_range(0, 100) >= 75 {
+                // TODO: no es random, tras recibir un ctrl + c se cae el lider u otra combinacion de teclas para elegir cual se cae
+                println!("[{}] se cae el lider", self.id);
+                break;
+            }
 
             let transaction_id = *self.last_id.0.lock().unwrap();
             let transaction_prices = prices[transaction_id].clone();
@@ -325,7 +328,7 @@ impl LeaderElection {
                 transaction_id,
                 &transaction_prices,
                 PREPARE,
-                &agent_clients,
+                &agents_ports,
                 &im_alive_clone_agents,
                 &logger_clone,
             );
@@ -368,12 +371,13 @@ impl LeaderElection {
                 transaction_id,
                 &transaction_prices,
                 operation,
-                &agent_clients,
+                &agents_ports,
                 &im_alive_clone_agents,
                 &logger_clone,
             );
             self.broadcast_last_log(operation, transaction_id);
 
+            *self.last_id.0.lock().unwrap() += 1;
             // This sleep is only for debugging purposes
             sleep(Duration::from_millis(1000));
         }
@@ -391,7 +395,7 @@ impl LeaderElection {
         ];
 
         for i in 0..5 {
-            // TODO: unhardcode maybe
+            // TODO: Cantidad de nodos dinamica o harcodeada
             if i == self.get_leader_id() {
                 continue;
             }
@@ -400,66 +404,43 @@ impl LeaderElection {
     }
 
     pub fn loop_node(&mut self) {
+        println!("[{}] inicio", self.id);
+        let socket = UdpSocket::bind(id_to_dataaddr(self.id)).unwrap();
+
         loop {
-            println!("[{}] inicio", self.id);
-            let socket = UdpSocket::bind(id_to_dataaddr(self.id)).unwrap();
-            // let im_alive = Arc::new(AtomicBool::new(true));
+            if self.am_i_leader() {
+                println!("[{}] soy SM", self.id);
+                let _ignore = socket.set_read_timeout(None);
+                println!(
+                    "[{}] Soy el nuevo leader y mi last_id es {}",
+                    self.id,
+                    *self.last_id.0.lock().unwrap()
+                );
+                self.process_payments();
+                break;
+            } else {
+                let leader_id = self.get_leader_id();
+                println!("[{}] pido trabajo al SM {}", self.id, leader_id);
 
-            loop {
-                if self.am_i_leader() {
-                    println!("[{}] soy SM", self.id);
-                    if thread_rng().gen_range(0, 100) >= 110 {
-                        // TODO: no es random, tras recibir un ctrl + c se cae el lider u otra combinacion de teclas para elegir cual se cae
-                        println!("[{}] se cae el lider", self.id);
-                        break;
-                    }
-                    let _ignore =socket.set_read_timeout(None);
-
-                    self.process_payments();
-                    // setten los last_id y last_status
-
-                    // for de todos los mensajes
-                    // self.resolve_lider_tasks()
-                    // enviar el prepare
-                    // recibierlo
-                    // broadcasteo el id el mensaje y el resulado
-                    // commitear o abortar
-                    // recien cuanto tengo todo, si es commit -> broadcastear a replicas
-
-                    // two phase commit:
-
-                    // alglobo  --> prepare --> agentes
-                    // -----
-                    // agentes  --> ready   --> alglobo
-                    // alglobo  (procesa)
-                    // alglobo  --> commit  --> agentes
-                    // -----
-                    // agentes  --> finish  --> alglobo
-
-                    // let (size, from) = socket.recv_from(&mut buf).unwrap();
-                    // socket.send_to("PONG".as_bytes(), from).unwrap();
+                let mut response: [u8; 2] = Default::default();
+                socket.set_read_timeout(Some(TIMEOUT)).unwrap();
+                if let Ok((_size, _from)) = socket.recv_from(&mut response) {
+                    *self.last_status.0.lock().unwrap() = response[0];
+                    *self.last_id.0.lock().unwrap() = response[1] as usize;
+                    println!(
+                        "[{}] trabajando, recibi un {} para la transaccion {}",
+                        self.id, response[0], response[1]
+                    );
                 } else {
-                    let leader_id = self.get_leader_id();
-                    println!("[{}] pido trabajo al SM {}", self.id, leader_id);
-
-                    let mut response: [u8; 2] = Default::default();
-                    socket.set_read_timeout(Some(TIMEOUT)).unwrap();
-                    if let Ok((_size, _from)) = socket.recv_from(&mut response) {
-                        *self.last_status.0.lock().unwrap() = response[0];
-                        *self.last_id.0.lock().unwrap() = response[1] as usize;
-                        println!("[{}] trabajando", self.id);
-                        thread::sleep(Duration::from_millis(1000));
-                    } else {
-                        println!("[{}] comenzando la busqeuda de un nuevo lider :3", self.id);
-                        self.find_new();
-                    }
+                    println!("[{}] comenzando la busqeuda de un nuevo lider :3", self.id);
+                    self.find_new();
                 }
             }
-
-            self.stop();
-
-            thread::sleep(Duration::from_secs(90));
         }
+
+        self.stop();
+
+        thread::sleep(Duration::from_secs(90));
     }
 
     fn am_i_leader(&self) -> bool {
@@ -477,8 +458,10 @@ impl LeaderElection {
     }
 
     fn stop(&mut self) {
+        println!("[{}] terminando", self.id);
         *self.stop.0.lock().unwrap() = true;
-        let _ignore = self.stop
+        let _ignore = self
+            .stop
             .1
             .wait_while(self.stop.0.lock().unwrap(), |should_stop| *should_stop);
     }

@@ -28,33 +28,36 @@ fn create_listener(mut agent: Agent) {
     );
 
     'listener: for stream in listener.incoming() {
-        loop {
-            let mut stream = stream.as_ref().expect("failed to read stream");
-            let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
+        let mut stream = stream.as_ref().expect("failed to read stream");
+        let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
 
-            let mut buffer: DataMsgBytes = Default::default();
-            reader
-                .read_exact(&mut buffer)
-                .expect("Couldn't read from stream");
+        let mut buffer: DataMsgBytes = Default::default();
 
-            let data_msg = DataMsg::from_bytes(buffer);
+        reader
+            .read_exact(&mut buffer)
+            .expect("Couldn't read from stream");
 
-            let result = match data_msg.opcode {
-                PREPARE => agent.prepare(data_msg.transaction_id, data_msg.data),
-                COMMIT => agent.commit(data_msg.transaction_id),
-                ABORT => agent.abort(data_msg.transaction_id),
-                FINISH => agent.finish(),
-                _ => panic!("Unknown opcode"),
-            };
+        let data_msg = DataMsg::from_bytes(buffer);
 
-            stream
-                .write_all(&[result])
-                .expect("Couldn't write to stream");
+        let result = match data_msg.opcode {
+            PREPARE => agent.prepare(data_msg.transaction_id, data_msg.data),
+            COMMIT => agent.commit(data_msg.transaction_id),
+            ABORT => agent.abort(data_msg.transaction_id),
+            FINISH => agent.finish(),
+            _ => panic!("Unknown opcode"),
+        };
 
-            if data_msg.opcode == FINISH {
-                break 'listener;
-            };
-        }
+        stream
+            .write_all(&[result])
+            .expect("Couldn't write to stream");
+
+        if data_msg.opcode == FINISH {
+            break 'listener;
+        };
+
+        stream
+            .shutdown(std::net::Shutdown::Both)
+            .expect("Couldn't shutdown stream");
     }
 }
 
