@@ -2,25 +2,31 @@
 #![allow(dead_code)]
 use std::thread;
 use std::time::Duration;
+use std::net::UdpSocket;
+use rand::{thread_rng, Rng};
 
 mod communication;
 mod leader_election;
 pub mod logger;
 mod utils;
 
-use leader_election::LeaderElection;
+use leader_election::{LeaderElection, id_to_ctrladdr, MSG_KILL};
 
 const TIMEOUT: Duration = Duration::from_secs(3);
 
 fn main() {
-    // TODO: Listener
-    // Por un lado, escuchamos la terminal para ver si matan alguno de los nodos
-    // Por otro lado, resolvemos si soy lider o no
-    // thread::Builder::new()
-    //         .name("Listen terminal for nodes".to_string())
-    //         .spawn(move || {
-
-    //         });
+    let _listener = thread::Builder::new()
+        .name("Listen terminal for nodes".to_string())
+        .spawn(move || {
+            // TODO: Replace this with a keyboard listener.
+            // Let the user choose the ID of the node to kill.
+            loop {
+                thread::sleep(Duration::from_secs(5));
+                let addr = id_to_ctrladdr(rand::thread_rng().gen_range(2, 5));
+                let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+                let _ignore = socket.send_to(&[MSG_KILL], addr);
+            }
+    });
 
     let n_nodes = 5;
     let mut handles = vec![];

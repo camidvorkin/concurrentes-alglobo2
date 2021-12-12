@@ -22,18 +22,19 @@ use std::net::SocketAddr;
 
 use crate::utils::{create_empty_csv, csv_to_prices, get_agents_ports, write_to_csv};
 
-fn id_to_ctrladdr(id: usize) -> String {
+pub fn id_to_ctrladdr(id: usize) -> String {
     "127.0.0.1:1234".to_owned() + &*id.to_string()
 }
-fn id_to_dataaddr(id: usize) -> String {
+pub fn id_to_dataaddr(id: usize) -> String {
     "127.0.0.1:1235".to_owned() + &*id.to_string()
 }
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
-const MSG_ACK: u8 = b'A';
-const MSG_ELECTION: u8 = b'E';
-const MSG_COORDINATOR: u8 = b'C';
+pub const MSG_ACK: u8 = b'A';
+pub const MSG_ELECTION: u8 = b'E';
+pub const MSG_COORDINATOR: u8 = b'C';
+pub const MSG_KILL: u8 = b'K';
 
 pub struct LeaderElection {
     id: usize,
@@ -103,9 +104,6 @@ impl LeaderElection {
                     }
                 }
                 MSG_COORDINATOR => {
-                    // 0 --> 3 (por ser lider):   [3, 0]
-                    // 3 --> 0 (por ser n+1):     [3, 0, 3]
-                    // 0 --> finaliza porque su id está en la lista
                     println!(
                         "[{}] recibí nuevo coordinador de {}, ids {:?}",
                         self.id, from, ids
@@ -133,6 +131,11 @@ impl LeaderElection {
                         );
                         thread::spawn(move || clone.safe_send_next(&msg, clone.id));
                     }
+                }
+                MSG_KILL => {
+                    println!("[{}] got KILL msg. i don't wanna live anymore", self.id);
+                    self.stop();
+                    break;
                 }
                 _ => {
                     println!("[{}] ??? {:?}", self.id, ids);
@@ -396,9 +399,8 @@ impl LeaderElection {
         }
 
         while *self.last_id.0.lock().unwrap() < prices.len() {
-            if thread_rng().gen_range(0, 100) >= 75 {
-                // TODO: no es random, tras recibir un ctrl + c se cae el lider u otra combinacion de teclas para elegir cual se cae
-                println!("[{}] se cae el lider pre-prepare", self.id);
+            if *self.stop.0.lock().unwrap() {
+                println!("[{}] se cae el lider por self.stop en el pre-prepare", self.id);
                 break;
             }
 
@@ -427,9 +429,8 @@ impl LeaderElection {
             );
             self.broadcast_last_log(PREPARE, transaction_id);
 
-            if thread_rng().gen_range(0, 100) >= 75 {
-                // TODO: no es random, tras recibir un ctrl + c se cae el lider u otra combinacion de teclas para elegir cual se cae
-                println!("[{}] se cae el lider post-prepare", self.id);
+            if *self.stop.0.lock().unwrap() {
+                println!("[{}] se cae el lider por self.stop en el post-prepare", self.id);
                 break;
             }
 
@@ -478,7 +479,7 @@ impl LeaderElection {
         println!("[{}] inicio", self.id);
         let socket = UdpSocket::bind(id_to_dataaddr(self.id)).unwrap();
 
-        loop {
+        while !*self.stop.0.lock().unwrap() {
             if self.am_i_leader() {
                 println!("[{}] soy SM", self.id);
                 let _ignore = socket.set_read_timeout(None);
