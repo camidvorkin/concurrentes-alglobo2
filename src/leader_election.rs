@@ -13,7 +13,7 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 
-use crate::communication::{DataMsg, ABORT, COMMIT, FINISH, PAYMENT_OK, PREPARE};
+use crate::communication::{DataMsg, ABORT, COMMIT, FINISH, PAYMENT_OK, PAYMENT_ERR, PREPARE};
 use crate::constants::{MSG_ACK, MSG_COORDINATOR, MSG_ELECTION, MSG_KILL, N_NODES};
 use crate::logger::Logger;
 
@@ -230,8 +230,6 @@ impl LeaderElection {
 
         for (i, agent_port) in agents_ports.iter().enumerate() {
             let addr = SocketAddr::from(([127, 0, 0, 1], *agent_port));
-            let mut client = TcpStream::connect(addr)
-                .unwrap_or_else(|_| panic!("connection with port {} failed", agent_port));
 
             let im_alive_clone = im_alive.clone();
             let logger_clone = self.logger.clone();
@@ -247,13 +245,29 @@ impl LeaderElection {
             thread::Builder::new()
                 .name(format!("Transaction {}", transaction_id))
                 .spawn(move || {
+                    let client_conn_result = TcpStream::connect(addr);
+                    let (lock, cvar) = &*responses_clone;
+                    let mut response: [u8; 1] = Default::default();
+
+                    if client_conn_result.is_err() {
+                        logger_clone.info(format!(
+                            "Could not connect to agent"
+                        ));
+                        response[0] = PAYMENT_ERR;
+                        lock.lock()
+                            .expect("Unable to lock responses")
+                            .push(response);
+                        cvar.notify_all();
+                        return;
+                    }
+
+                    let mut client = client_conn_result.expect("Could not connect to agent");
                     client
                         .write_all(&DataMsg::to_bytes(&msg))
                         .unwrap_or_else(|_| {
                             im_alive_clone.store(false, Ordering::SeqCst);
                         });
 
-                    let mut response: [u8; 1] = Default::default();
                     client.read_exact(&mut response).unwrap_or_else(|_| {
                         im_alive_clone.store(false, Ordering::SeqCst);
                     });
@@ -262,7 +276,6 @@ impl LeaderElection {
                         logger_clone.info("Connection with agent suddenly closed".to_string())
                     }
 
-                    let (lock, cvar) = &*responses_clone;
                     lock.lock()
                         .expect("Unable to lock responses")
                         .push(response);
@@ -355,8 +368,8 @@ impl LeaderElection {
 
         while *self.last_id.0.lock().expect("Unable to get lock") < prices.len() {
             if *self.stop.lock().expect("Unable to get lock") {
-                println!("Leader stopped before PREPARE msg");
-                break;
+                self.logger.trace("Leader stopped before PREPARE msg".to_string());
+                return;
             }
 
             let transaction_id = *self.last_id.0.lock().expect("Unable to get lock");
@@ -380,10 +393,12 @@ impl LeaderElection {
             self.broadcast_last_log(PREPARE, transaction_id);
 
             if *self.stop.lock().expect("Unable to get lock") {
-                println!("Leader stopped after PREPARE msg");
-                break;
+                self.logger.trace("Leader stopped after PREPARE msg".to_string());
+                return;
             }
-
+            
+            // Wait for all agents to respond or timeout
+            // let all_oks = all_respo
             let all_oks = all_responses.iter().all(|&opt| opt[0] == PAYMENT_OK);
 
             let operation = if all_oks && !is_timeout && im_alive.load(Ordering::SeqCst) {
@@ -422,17 +437,16 @@ impl LeaderElection {
     }
 
     pub fn broadcast_last_log(&self, status: u8, id: usize) {
-        let msg = [
-            status as u8,
-            id as u8, // TODO: resize
-        ];
+        let mut bytes = Vec::new();
+        bytes.push(status);
+        bytes.extend(id.to_be_bytes());
 
         for i in 0..N_NODES {
             if i == self.get_leader_id() {
                 continue;
             }
             self.socket
-                .send_to(&msg, id_to_dataaddr(i))
+                .send_to(&&bytes, id_to_dataaddr(i))
                 .expect("Unable to send message");
         }
     }
@@ -452,14 +466,15 @@ impl LeaderElection {
                 self.logger
                     .info(format!("Waiting for message from leader {}", leader_id));
 
-                let mut response: [u8; 2] = Default::default();
+                let mut response: [u8; std::mem::size_of::<usize>() + 1] = Default::default();
                 socket
                     .set_read_timeout(Some(TIMEOUT))
                     .expect("Unable to set timeout");
 
                 if let Ok((_size, _from)) = socket.recv_from(&mut response) {
                     *self.last_status.0.lock().expect("Unable to get lock") = response[0];
-                    *self.last_id.0.lock().expect("Unable to get lock") = response[1] as usize;
+                    let id_bytes: [u8; std::mem::size_of::<usize>()] = response[1..].try_into().expect("Incorrect message length");
+                    *self.last_id.0.lock().expect("Unable to get lock") = usize::from_be_bytes(id_bytes) as usize;
                     self.logger.info(format!(
                         "Received last log: Last status is {} for node {}",
                         response[0], response[1]
