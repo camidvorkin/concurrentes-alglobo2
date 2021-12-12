@@ -1,18 +1,17 @@
 #![forbid(unsafe_code)]
-#![allow(dead_code)]
+use rand::Rng;
+use std::net::UdpSocket;
 use std::thread;
 use std::time::Duration;
-use std::net::UdpSocket;
-use rand::{thread_rng, Rng};
 
 mod communication;
+mod constants;
 mod leader_election;
 pub mod logger;
-mod constants;
 mod utils;
 
-use leader_election::{LeaderElection, id_to_ctrladdr};
-use constants::{N_NODES, MSG_KILL};
+use constants::{MSG_KILL, N_NODES};
+use leader_election::{id_to_ctrladdr, LeaderElection};
 
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -28,7 +27,7 @@ fn main() {
                 let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
                 let _ignore = socket.send_to(&[MSG_KILL], addr);
             }
-    });
+        });
 
     let mut handles = vec![];
 
