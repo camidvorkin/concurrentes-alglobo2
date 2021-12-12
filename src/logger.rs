@@ -51,6 +51,14 @@ impl Logger {
         logger
     }
 
+    pub fn info(&self, msg: String) {
+        self.log(msg, LogLevel::INFO);
+    }
+
+    pub fn trace(&self, msg: String) {
+        self.log(msg, LogLevel::TRACE);
+    }
+
     /// Logs the message to the file and, if the level is INFO, prints to console
     pub fn log(&self, msg: String, loglevel: LogLevel) {
         let mut file = OpenOptions::new()
@@ -59,7 +67,7 @@ impl Logger {
             .expect("Unable to open log file");
 
         if let LogLevel::INFO = loglevel {
-            println!("{}: {}", self.name, msg)
+            println!("[{}]: {}", self.name, msg)
         };
 
         // We want to have the loglevel on exactly N characters, so that `| TRACE  |` and `|  INFO  |` and `| FINISH |` have the same width.

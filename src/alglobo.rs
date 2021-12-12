@@ -8,11 +8,13 @@ use rand::{thread_rng, Rng};
 mod communication;
 mod leader_election;
 pub mod logger;
+mod constants;
 mod utils;
 
-use leader_election::{LeaderElection, id_to_ctrladdr, MSG_KILL};
+use leader_election::{LeaderElection, id_to_ctrladdr};
+use constants::{N_NODES, MSG_KILL};
 
-const TIMEOUT: Duration = Duration::from_secs(3);
+pub const TIMEOUT: Duration = Duration::from_secs(5);
 
 fn main() {
     let _listener = thread::Builder::new()
@@ -21,17 +23,16 @@ fn main() {
             // TODO: Replace this with a keyboard listener.
             // Let the user choose the ID of the node to kill.
             loop {
-                thread::sleep(Duration::from_secs(5));
-                let addr = id_to_ctrladdr(rand::thread_rng().gen_range(2, 5));
+                thread::sleep(TIMEOUT);
+                let addr = id_to_ctrladdr(rand::thread_rng().gen_range(2, N_NODES + 1));
                 let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
                 let _ignore = socket.send_to(&[MSG_KILL], addr);
             }
     });
 
-    let n_nodes = 5;
     let mut handles = vec![];
 
-    for id in 0..n_nodes {
+    for id in 0..N_NODES {
         handles.push(
             thread::Builder::new()
                 .name("Leader election".to_string())

@@ -1,5 +1,5 @@
 use crate::communication::{ABORT, ACK, COMMIT, PAYMENT_ERR, PAYMENT_OK, PREPARE};
-use crate::logger::{LogLevel, Logger};
+use crate::logger::Logger;
 use rand::Rng;
 use std::collections::HashMap;
 
@@ -34,40 +34,33 @@ impl Agent {
         }
     }
 
-    pub fn log(&self, msg: String, loglevel: LogLevel) {
-        self.logger.log(msg, loglevel);
-    }
-
     pub fn prepare(&mut self, transaction_id: u32, data: u32) -> u8 {
-        self.log(
-            format!("Transaction {} | PREPARE", transaction_id),
-            LogLevel::TRACE,
+        self.logger.trace(
+            format!("Transaction {} | PREPARE", transaction_id)
         );
         self.transactions_state.insert(transaction_id, PREPARE);
 
         let success = rand::thread_rng().gen_bool(self.success_rate);
         if success {
-            self.log(format!("Payment of ${} | OK", data), LogLevel::INFO);
+            self.logger.info(format!("Payment of ${} | OK", data));
             PAYMENT_OK
         } else {
-            self.log(format!("Payment of ${} | ERR", data), LogLevel::INFO);
+            self.logger.info(format!("Payment of ${} | ERR", data));
             PAYMENT_ERR
         }
     }
 
     pub fn commit(&mut self, transaction_id: u32) -> u8 {
-        self.log(
-            format!("Transaction {} | COMMIT", transaction_id),
-            LogLevel::TRACE,
+        self.logger.trace(
+            format!("Transaction {} | COMMIT", transaction_id)
         );
         self.transactions_state.insert(transaction_id, COMMIT);
         ACK
     }
 
     pub fn abort(&mut self, transaction_id: u32) -> u8 {
-        self.log(
+        self.logger.trace(
             format!("Transaction {} | ABORT", transaction_id),
-            LogLevel::TRACE,
         );
         self.transactions_state.insert(transaction_id, ABORT);
         ACK

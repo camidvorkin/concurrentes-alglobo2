@@ -19,12 +19,11 @@ fn create_listener(mut agent: Agent) {
     let listener = TcpListener::bind(addr)
         .unwrap_or_else(|_| panic!("listener on port {} failed", agent.port));
 
-    agent.log(
+    agent.logger.info(
         format!(
             "Started on port {} with sucess rate {}",
             agent.port, agent.success_rate
-        ),
-        logger::LogLevel::INFO,
+        )
     );
 
     'listener: for stream in listener.incoming() {
