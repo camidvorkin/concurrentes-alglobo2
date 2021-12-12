@@ -69,7 +69,7 @@ impl LeaderElection {
     fn responder(&mut self) {
         while !*self.stop.0.lock().unwrap() {
             let mut buf = [0; 1 + size_of::<usize>() + (5 + 1) * size_of::<usize>()]; // TODO: Cantidad de nodos dinamica o harcodeada
-            self.socket.set_read_timeout(Some(TIMEOUT)).unwrap();
+            self.socket.set_read_timeout(Some(TIMEOUT / 4)).unwrap();
             let res = self.socket.recv_from(&mut buf);
 
             if res.is_err() {
@@ -92,8 +92,9 @@ impl LeaderElection {
                     if ids.contains(&self.id) {
                         let winner = *ids.iter().max().unwrap();
                         self.socket
-                            .send_to(&self.ids_to_msg(MSG_COORDINATOR, &[winner, self.id]), from)
+                            .send_to(&self.ids_to_msg(MSG_COORDINATOR, &[winner]), from)
                             .unwrap();
+                        
                     } else {
                         ids.push(self.id);
                         let msg = self.ids_to_msg(MSG_ELECTION, &ids);
@@ -102,6 +103,9 @@ impl LeaderElection {
                     }
                 }
                 MSG_COORDINATOR => {
+                    // 0 --> 3 (por ser lider):   [3, 0]
+                    // 3 --> 0 (por ser n+1):     [3, 0, 3]
+                    // 0 --> finaliza porque su id está en la lista
                     println!(
                         "[{}] recibí nuevo coordinador de {}, ids {:?}",
                         self.id, from, ids
@@ -111,10 +115,22 @@ impl LeaderElection {
                     self.socket
                         .send_to(&self.ids_to_msg(MSG_ACK, &[self.id]), from)
                         .unwrap();
-                    if !ids[1..].contains(&self.id) {
+                    println!(
+                        "[{}] sent ack to {}",
+                        self.id, from.to_string()
+                    );
+                    if !ids[1..].contains(&self.id) { 
                         ids.push(self.id);
                         let msg = self.ids_to_msg(MSG_COORDINATOR, &ids);
+                        println!(
+                            "[{}] From: {} send msg {:?}",
+                            self.id, from.to_string(), ids
+                        );
                         let clone = self.clone();
+                        println!(
+                            "[{}] opening safe_send_next",
+                            self.id
+                        );
                         thread::spawn(move || clone.safe_send_next(&msg, clone.id));
                     }
                 }
@@ -123,7 +139,6 @@ impl LeaderElection {
                 }
             }
         }
-        *self.stop.0.lock().unwrap() = false;
         self.stop.1.notify_all();
     }
 
@@ -153,6 +168,14 @@ impl LeaderElection {
     }
 
     fn safe_send_next(&self, msg: &[u8], id: usize) {
+        if *self.stop.0.lock().unwrap() {
+            return;
+        }
+
+        println!(
+            "[{}] running safe_send_next for id {}, stop {}",
+            self.id, id, *self.stop.0.lock().unwrap()
+        );
         let next_id = self.next(id);
         if next_id == self.id {
             println!("[{}] enviando {} a {}", self.id, msg[0] as char, next_id);
@@ -177,6 +200,10 @@ impl LeaderElection {
 
     fn find_new(&mut self) {
         if *self.stop.0.lock().unwrap() {
+            println!(
+                "[{}] notified to stop",
+                self.id,
+            );
             return;
         }
         println!("[{}] buscando lider", self.id);
@@ -468,6 +495,7 @@ impl LeaderElection {
 
                 let mut response: [u8; 2] = Default::default();
                 socket.set_read_timeout(Some(TIMEOUT)).unwrap();
+
                 if let Ok((_size, _from)) = socket.recv_from(&mut response) {
                     *self.last_status.0.lock().unwrap() = response[0];
                     *self.last_id.0.lock().unwrap() = response[1] as usize;
@@ -475,7 +503,7 @@ impl LeaderElection {
                         "[{}] trabajando, recibi un {} para la transaccion {}",
                         self.id, response[0], response[1]
                     );
-                } else {
+                } else { // TODO: desharcodear
                     println!("[{}] comenzando la busqeuda de un nuevo lider :3", self.id);
                     self.find_new();
                 }
@@ -508,5 +536,7 @@ impl LeaderElection {
             .stop
             .1
             .wait_while(self.stop.0.lock().unwrap(), |should_stop| *should_stop);
+        println!("[{}] freno posta, stop es {}", self.id, *self.stop.0.lock().unwrap());
+
     }
 }
