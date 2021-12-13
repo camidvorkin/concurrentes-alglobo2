@@ -29,7 +29,8 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
         "Started on port {} with sucess rate {}",
         agent.port, agent.success_rate
     ));
-    'listener: for stream in listener.incoming() {
+
+    for stream in listener.incoming() {
         let mut stream = stream.as_ref().expect("failed to read stream");
         let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
 
@@ -54,7 +55,7 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
             .expect("Couldn't write to stream");
 
         if data_msg.opcode == FINISH {
-            break 'listener;
+            break;
         };
 
         stream
@@ -73,12 +74,9 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
 fn main() {
     let agents = get_agents();
 
-    let is_agent_alive = vec![
-        Arc::new(AtomicBool::new(true)),
-        Arc::new(AtomicBool::new(true)),
-        Arc::new(AtomicBool::new(true)),
-    ];
+    let is_agent_alive = vec![Arc::new(AtomicBool::new(true)); agents.len()];
     let is_agent_alive_clone = is_agent_alive.clone();
+
     let _ = thread::Builder::new()
         .name("Agents".to_string())
         .spawn(move || {

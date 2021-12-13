@@ -11,18 +11,6 @@ pub struct Agent {
     transactions_state: HashMap<u32, u8>,
 }
 
-impl Clone for Agent {
-    fn clone(&self) -> Self {
-        Agent {
-            name: self.name.clone(),
-            port: self.port,
-            success_rate: self.success_rate,
-            logger: self.logger.clone(),
-            transactions_state: self.transactions_state.clone(),
-        }
-    }
-}
-
 impl Agent {
     pub fn new(name: String, port: u16, success_rate: f64) -> Self {
         Agent {
