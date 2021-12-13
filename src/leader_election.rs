@@ -21,11 +21,13 @@ use std::net::SocketAddr;
 
 use crate::utils::{create_empty_csv, csv_to_prices, get_agents_ports, write_to_csv};
 
-pub fn id_to_ctrladdr(id: usize) -> String {
-    "127.0.0.1:1234".to_owned() + &*id.to_string()
+pub fn id_to_ctrladdr(id: usize) -> SocketAddr {
+    let port = (1100 + id) as u16;
+    SocketAddr::from(([127, 0, 0, 1], port))
 }
-pub fn id_to_dataaddr(id: usize) -> String {
-    "127.0.0.1:1235".to_owned() + &*id.to_string()
+pub fn id_to_dataaddr(id: usize) -> SocketAddr {
+    let port = (1200 + id) as u16;
+    SocketAddr::from(([127, 0, 0, 1], port))
 }
 
 pub const TIMEOUT: Duration = Duration::from_secs(5);
