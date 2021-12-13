@@ -24,7 +24,8 @@ fn psycho_node_killer() {
                 Ok(number) => {
                     if (0..N_NODES).contains(&number) {
                         let addr = id_to_ctrladdr(number);
-                        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+                        let socket =
+                            UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
                         socket
                             .send_to(&[MSG_KILL], addr)
                             .expect("Couldn't send KILL message");

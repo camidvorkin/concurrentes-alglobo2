@@ -19,8 +19,9 @@ pub struct DataMsg {
 
 impl DataMsg {
     pub fn from_bytes(msg: DataMsgBytes) -> DataMsg {
-        let transaction_id: u32 = u32::from_be_bytes(msg[0..4].try_into().unwrap());
-        let data: u32 = u32::from_be_bytes(msg[4..8].try_into().unwrap());
+        let transaction_id: u32 =
+            u32::from_be_bytes(msg[0..4].try_into().expect("Couldn't convert to u32"));
+        let data: u32 = u32::from_be_bytes(msg[4..8].try_into().expect("Couldn't convert to u32"));
         let opcode: u8 = msg[8];
 
         DataMsg {

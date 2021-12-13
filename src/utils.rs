@@ -50,7 +50,10 @@ pub fn csv_to_prices(filename: &str) -> Vec<Vec<u32>> {
         .expect("Couldn't read file");
     let mut result = Vec::new();
     for line in contents.lines() {
-        let price: Vec<u32> = line.split(',').map(|x| x.parse::<u32>().unwrap()).collect();
+        let price: Vec<u32> = line
+            .split(',')
+            .map(|x| x.parse::<u32>().expect("Couldn't parse to u32"))
+            .collect();
         result.push(price);
     }
     result
