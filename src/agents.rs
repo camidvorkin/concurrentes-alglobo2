@@ -7,7 +7,7 @@ mod utils;
 use agent::Agent;
 use communication::{DataMsg, DataMsgBytes, ABORT, COMMIT, FINISH, PREPARE};
 use rand::Rng;
-use std::io::Write;
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +24,9 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
     let addr = SocketAddr::from(([127, 0, 0, 1], agent.port));
     let listener = TcpListener::bind(addr)
         .unwrap_or_else(|_| panic!("listener on port {} failed", agent.port));
+    listener
+        .set_nonblocking(true)
+        .expect("Cannot set non-blocking");
 
     agent.logger.info(format!(
         "Started on port {} with sucess rate {}",
@@ -31,7 +34,18 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
     ));
 
     for stream in listener.incoming() {
-        let mut stream = stream.as_ref().expect("failed to read stream");
+        let mut stream = match stream {
+            Ok(s) => s,
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                if !is_alive.load(Ordering::SeqCst) {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+            Err(e) => panic!("accept failed: {}", e),
+        };
+
         let mut reader = BufReader::new(stream.try_clone().expect("Couldn't clone stream"));
 
         let mut buffer: DataMsgBytes = Default::default();
@@ -61,13 +75,6 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
         stream
             .shutdown(std::net::Shutdown::Both)
             .expect("Couldn't shutdown stream");
-
-        // TODO: this kills the agent only after handling the next request.
-        // and it should be before the next loop (google how to handle incoming
-        // requests).
-        if !is_alive.load(Ordering::SeqCst) {
-            break;
-        }
     }
 }
 
