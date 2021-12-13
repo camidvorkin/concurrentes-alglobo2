@@ -70,7 +70,7 @@ impl Logger {
             println!("[{}]: {}", self.name, msg)
         };
 
-        // We want to have the loglevel on exactly N characters, so that `| TRACE  |` and `|  INFO  |` and `| FINISH |` have the same width.
+        // We want to have the loglevel on exactly N characters, so that `| TRACE  |` and `|  INFO  |` have the same width.
         // This formatting only works with strings, not debug strings
         // i.e. {:^7} works, but {:^7?} does not
         // So we first do some format! shenanigans to convert the debug string to a string
