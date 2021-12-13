@@ -25,7 +25,9 @@ fn psycho_node_killer() {
                     if (0..N_NODES).contains(&number) {
                         let addr = id_to_ctrladdr(number);
                         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-                        let _ignore = socket.send_to(&[MSG_KILL], addr);
+                        socket
+                            .send_to(&[MSG_KILL], addr)
+                            .expect("Couldn't send KILL message");
                     }
                 }
                 Err(_) => continue,
@@ -41,19 +43,21 @@ fn main() {
         .spawn(psycho_node_killer)
         .expect("Couldn't create psycho killer loop");
 
-    let mut handles = vec![];
+    let mut node_threads = vec![];
 
     for id in 0..N_NODES {
-        handles.push(
+        node_threads.push(
             thread::Builder::new()
-                .name("Leader election".to_string())
+                .name(format!("Alglobo Node {}", id))
                 .spawn(move || {
                     let mut node = LeaderElection::new(id);
                     node.loop_node()
-                }),
+                })
+                .expect("alglobo node thread creation failed"),
         );
     }
-    handles.into_iter().for_each(|h| {
-        let _ignore = h.unwrap().join();
-    });
+
+    for thread in node_threads {
+        thread.join().expect("alglobo node thread join failed");
+    }
 }
