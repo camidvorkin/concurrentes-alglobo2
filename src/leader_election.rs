@@ -37,7 +37,7 @@ pub struct LeaderElection {
     socket: UdpSocket,
     leader_id: Arc<(Mutex<Option<usize>>, Condvar)>,
     got_ack: Arc<(Mutex<Option<usize>>, Condvar)>,
-    stop: Arc<Mutex<bool>>,
+    stop: Arc<AtomicBool>,
     last_id: Arc<(Mutex<usize>, Condvar)>,
     last_status: Arc<(Mutex<u8>, Condvar)>,
     logger: Logger,
@@ -52,7 +52,7 @@ impl LeaderElection {
             socket: UdpSocket::bind(id_to_ctrladdr(id)).expect("Unable to bind socket"),
             leader_id: Arc::new((Mutex::new(Some(id)), Condvar::new())),
             got_ack: Arc::new((Mutex::new(None), Condvar::new())),
-            stop: Arc::new(Mutex::new(false)),
+            stop: Arc::new(AtomicBool::new(false)),
             last_id: Arc::new((Mutex::new(0), Condvar::new())),
             last_status: Arc::new((Mutex::new(0), Condvar::new())),
             logger: Logger::new("node-".to_owned() + &*id.to_string()),
@@ -66,7 +66,7 @@ impl LeaderElection {
     }
 
     fn responder(&mut self) {
-        while !*self.stop.lock().expect("Unable to get stop lock") {
+        while !self.stop.load(Ordering::SeqCst) {
             let mut buf = [0; 1 + size_of::<usize>() + (N_NODES + 1) * size_of::<usize>()];
             self.socket
                 .set_read_timeout(Some(TIMEOUT / 4))
@@ -165,7 +165,7 @@ impl LeaderElection {
     }
 
     fn safe_send_next(&self, msg: &[u8], id: usize) {
-        if *self.stop.lock().expect("Unable to get lock") {
+        if self.stop.load(Ordering::SeqCst) {
             return;
         }
         self.logger
@@ -193,7 +193,7 @@ impl LeaderElection {
     }
 
     fn find_new(&mut self) {
-        if *self.stop.lock().expect("Unable to get lock") {
+        if self.stop.load(Ordering::SeqCst) {
             return;
         }
         self.logger.info("Looking for new leader".to_string());
@@ -367,7 +367,7 @@ impl LeaderElection {
         }
 
         while *self.last_id.0.lock().expect("Unable to get lock") < prices.len() {
-            if *self.stop.lock().expect("Unable to get lock") {
+            if self.stop.load(Ordering::SeqCst) {
                 self.logger
                     .trace("Leader stopped before PREPARE msg".to_string());
                 return;
@@ -393,7 +393,7 @@ impl LeaderElection {
             );
             self.broadcast_last_log(PREPARE, transaction_id);
 
-            if *self.stop.lock().expect("Unable to get lock") {
+            if self.stop.load(Ordering::SeqCst) {
                 self.logger
                     .trace("Leader stopped after PREPARE msg".to_string());
                 return;
@@ -456,7 +456,7 @@ impl LeaderElection {
         self.logger.info("START".to_string());
         let socket = UdpSocket::bind(id_to_dataaddr(self.id)).expect("Unable to bind socket");
 
-        while !*self.stop.lock().expect("Unable to get lock") {
+        while !self.stop.load(Ordering::SeqCst) {
             if self.am_i_leader() {
                 self.logger.info("I am the leader".to_string());
                 let _ignore = socket.set_read_timeout(None);
@@ -512,6 +512,6 @@ impl LeaderElection {
 
     fn stop(&mut self) {
         self.logger.info("Stop node".to_string());
-        *self.stop.lock().expect("Unable to get lock") = true;
+        self.stop.store(true, Ordering::SeqCst);
     }
 }
