@@ -13,7 +13,7 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 
-use crate::communication::{DataMsg, ABORT, COMMIT, FINISH, PAYMENT_OK, PAYMENT_ERR, PREPARE};
+use crate::communication::{DataMsg, ABORT, COMMIT, FINISH, PAYMENT_ERR, PAYMENT_OK, PREPARE};
 use crate::constants::{MSG_ACK, MSG_COORDINATOR, MSG_ELECTION, MSG_KILL, N_NODES};
 use crate::logger::Logger;
 
@@ -250,9 +250,7 @@ impl LeaderElection {
                     let mut response: [u8; 1] = Default::default();
 
                     if client_conn_result.is_err() {
-                        logger_clone.info(format!(
-                            "Could not connect to agent"
-                        ));
+                        logger_clone.info("Could not connect to agent".to_string());
                         response[0] = PAYMENT_ERR;
                         lock.lock()
                             .expect("Unable to lock responses")
@@ -368,7 +366,8 @@ impl LeaderElection {
 
         while *self.last_id.0.lock().expect("Unable to get lock") < prices.len() {
             if *self.stop.lock().expect("Unable to get lock") {
-                self.logger.trace("Leader stopped before PREPARE msg".to_string());
+                self.logger
+                    .trace("Leader stopped before PREPARE msg".to_string());
                 return;
             }
 
@@ -393,10 +392,11 @@ impl LeaderElection {
             self.broadcast_last_log(PREPARE, transaction_id);
 
             if *self.stop.lock().expect("Unable to get lock") {
-                self.logger.trace("Leader stopped after PREPARE msg".to_string());
+                self.logger
+                    .trace("Leader stopped after PREPARE msg".to_string());
                 return;
             }
-            
+
             // Wait for all agents to respond or timeout
             // let all_oks = all_respo
             let all_oks = all_responses.iter().all(|&opt| opt[0] == PAYMENT_OK);
@@ -437,8 +437,7 @@ impl LeaderElection {
     }
 
     pub fn broadcast_last_log(&self, status: u8, id: usize) {
-        let mut bytes = Vec::new();
-        bytes.push(status);
+        let mut bytes = vec![status];
         bytes.extend(id.to_be_bytes());
 
         for i in 0..N_NODES {
@@ -446,7 +445,7 @@ impl LeaderElection {
                 continue;
             }
             self.socket
-                .send_to(&&bytes, id_to_dataaddr(i))
+                .send_to(&bytes, id_to_dataaddr(i))
                 .expect("Unable to send message");
         }
     }
@@ -473,8 +472,10 @@ impl LeaderElection {
 
                 if let Ok((_size, _from)) = socket.recv_from(&mut response) {
                     *self.last_status.0.lock().expect("Unable to get lock") = response[0];
-                    let id_bytes: [u8; std::mem::size_of::<usize>()] = response[1..].try_into().expect("Incorrect message length");
-                    *self.last_id.0.lock().expect("Unable to get lock") = usize::from_be_bytes(id_bytes) as usize;
+                    let id_bytes: [u8; std::mem::size_of::<usize>()] =
+                        response[1..].try_into().expect("Incorrect message length");
+                    *self.last_id.0.lock().expect("Unable to get lock") =
+                        usize::from_be_bytes(id_bytes) as usize;
                     self.logger.info(format!(
                         "Received last log: Last status is {} for node {}",
                         response[0], response[1]

@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(dead_code)]
 use rand::Rng;
 use std::net::UdpSocket;
 use std::thread;
