@@ -6,8 +6,7 @@ pub mod logger;
 mod utils;
 use agent::Agent;
 use communication::{DataMsg, DataMsgBytes, ABORT, COMMIT, FINISH, PREPARE};
-use rand::Rng;
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,6 +18,23 @@ use std::{
 use utils::{agent_get_name, agent_get_port, agent_get_success_rate, get_agents};
 
 pub const TIMEOUT: Duration = Duration::from_secs(30);
+
+fn psycho_agent_killer(is_agent_alive: Vec<Arc<AtomicBool>>) {
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        match line {
+            Ok(line) => match line.trim().parse::<usize>() {
+                Ok(number) => {
+                    if (0..is_agent_alive.len()).contains(&number) {
+                        is_agent_alive[number].store(false, Ordering::SeqCst);
+                    }
+                }
+                Err(_) => continue,
+            },
+            Err(_) => panic!("Failed to read stdin"),
+        }
+    }
+}
 
 fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
     let addr = SocketAddr::from(([127, 0, 0, 1], agent.port));
@@ -84,17 +100,10 @@ fn main() {
     let is_agent_alive = vec![Arc::new(AtomicBool::new(true)); agents.len()];
     let is_agent_alive_clone = is_agent_alive.clone();
 
-    let _ = thread::Builder::new()
-        .name("Agents".to_string())
-        .spawn(move || {
-            loop {
-                // TODO: Listen to A, H or B for shutting down the according agent
-                thread::sleep(TIMEOUT);
-                let rand = rand::thread_rng().gen_range(0, 3);
-                is_agent_alive[rand].store(false, Ordering::SeqCst);
-                println!("Agent {} is dead", rand);
-            }
-        });
+    thread::Builder::new()
+        .name("psycho killer".to_string())
+        .spawn(move || psycho_agent_killer(is_agent_alive))
+        .expect("Couldn't create psycho killer loop");
 
     let mut agents_threads = vec![];
     for (i, agent) in agents.iter().enumerate() {

@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
-use rand::Rng;
-use std::net::UdpSocket;
+use std::io::BufRead;
 use std::thread;
 use std::time::Duration;
+use std::{io, net::UdpSocket};
 
 mod communication;
 mod constants;
@@ -16,19 +16,30 @@ use leader_election::{id_to_ctrladdr, LeaderElection};
 
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 
+fn psycho_node_killer() {
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        match line {
+            Ok(line) => match line.trim().parse::<usize>() {
+                Ok(number) => {
+                    if (0..N_NODES).contains(&number) {
+                        let addr = id_to_ctrladdr(number);
+                        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+                        let _ignore = socket.send_to(&[MSG_KILL], addr);
+                    }
+                }
+                Err(_) => continue,
+            },
+            Err(_) => panic!("Failed to read stdin"),
+        }
+    }
+}
+
 fn main() {
-    let _listener = thread::Builder::new()
-        .name("Listen terminal for nodes".to_string())
-        .spawn(move || {
-            // TODO: Replace this with a keyboard listener.
-            // Let the user choose the ID of the node to kill.
-            loop {
-                thread::sleep(TIMEOUT);
-                let addr = id_to_ctrladdr(rand::thread_rng().gen_range(2, N_NODES + 1));
-                let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-                let _ignore = socket.send_to(&[MSG_KILL], addr);
-            }
-        });
+    thread::Builder::new()
+        .name("psycho killer".to_string())
+        .spawn(psycho_node_killer)
+        .expect("Couldn't create psycho killer loop");
 
     let mut handles = vec![];
 
