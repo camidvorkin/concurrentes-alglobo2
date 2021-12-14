@@ -59,7 +59,10 @@ impl LeaderElection {
         };
 
         let mut clone = ret.clone();
-        thread::spawn(move || clone.responder());
+        thread::Builder::new()
+            .name(format!("Node {} -- Responder", id))
+            .spawn(move || clone.responder())
+            .expect("node responder thread creation failed");
 
         ret.find_new();
         ret
@@ -100,7 +103,11 @@ impl LeaderElection {
                         ids.push(self.id);
                         let msg = self.ids_to_msg(MSG_ELECTION, &ids);
                         let clone = self.clone();
-                        thread::spawn(move || clone.safe_send_next(&msg, clone.id));
+
+                        thread::Builder::new()
+                            .name(format!("Node {} -- Sender", self.id))
+                            .spawn(move || clone.safe_send_next(&msg, clone.id))
+                            .expect("node sender thread creation failed");
                     }
                 }
                 MSG_COORDINATOR => {
@@ -117,7 +124,11 @@ impl LeaderElection {
                         ids.push(self.id);
                         let msg = self.ids_to_msg(MSG_COORDINATOR, &ids);
                         let clone = self.clone();
-                        thread::spawn(move || clone.safe_send_next(&msg, clone.id));
+
+                        thread::Builder::new()
+                            .name(format!("Node {} -- Sender", self.id))
+                            .spawn(move || clone.safe_send_next(&msg, clone.id))
+                            .expect("node sender thread creation failed");
                     }
                 }
                 MSG_KILL => {
