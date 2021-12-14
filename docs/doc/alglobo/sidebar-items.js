@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["main",""]]});
+initSidebarItems({"fn":[["main","Starts the main process, starting the node killer and each node process"],["psycho_node_killer","Starts the thread designated to kill each node via keyboard input."]],"mod":[["alglobo_node","AlgloboNode struct"],["communication",""],["logger","Logging functions"],["utils",""]]});
