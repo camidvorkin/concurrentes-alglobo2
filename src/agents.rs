@@ -17,8 +17,6 @@ use std::{
 };
 use utils::{agent_get_name, agent_get_port, agent_get_success_rate, get_agents};
 
-pub const TIMEOUT: Duration = Duration::from_secs(30);
-
 fn psycho_agent_killer(is_agent_alive: Vec<Arc<AtomicBool>>) {
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
