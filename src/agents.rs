@@ -57,6 +57,7 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
                     agent.logger.info("Got killed".to_string());
                     break;
                 } else {
+                    thread::sleep(Duration::from_millis(300));
                     continue;
                 }
             }
