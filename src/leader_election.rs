@@ -55,7 +55,7 @@ impl LeaderElection {
             stop: Arc::new(AtomicBool::new(false)),
             last_id: Arc::new((Mutex::new(0), Condvar::new())),
             last_status: Arc::new((Mutex::new(0), Condvar::new())),
-            logger: Logger::new("node-".to_owned() + &*id.to_string()),
+            logger: Logger::new(format!("node-{}", id)),
         };
 
         let mut clone = ret.clone();
