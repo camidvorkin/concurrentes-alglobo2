@@ -94,7 +94,7 @@ impl AlgloboNode {
 
         let mut clone = ret.clone();
         thread::Builder::new()
-            .name(format!("Node {} -- Responder", id))
+            .name(format!("Node{}-Responder", id))
             .spawn(move || clone.responder())
             .expect("node responder thread creation failed");
 
@@ -142,7 +142,7 @@ impl AlgloboNode {
                         let clone = self.clone();
 
                         thread::Builder::new()
-                            .name(format!("Node {} -- Sender", self.id))
+                            .name(format!("Node{}-Sender", self.id))
                             .spawn(move || clone.safe_send_next(&msg, clone.id))
                             .expect("node sender thread creation failed");
                     }
@@ -163,7 +163,7 @@ impl AlgloboNode {
                         let clone = self.clone();
 
                         thread::Builder::new()
-                            .name(format!("Node {} -- Sender", self.id))
+                            .name(format!("Node{}-Sender", self.id))
                             .spawn(move || clone.safe_send_next(&msg, clone.id))
                             .expect("node sender thread creation failed");
                     }
