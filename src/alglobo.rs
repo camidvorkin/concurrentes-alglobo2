@@ -6,13 +6,11 @@ use std::time::Duration;
 use std::{io, net::UdpSocket};
 
 mod communication;
-mod constants;
 mod leader_election;
 pub mod logger;
 mod utils;
 
-use constants::{MSG_KILL, N_NODES};
-use leader_election::{id_to_ctrladdr, LeaderElection};
+use leader_election::{id_to_ctrladdr, LeaderElection, MSG_KILL, N_NODES};
 
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 
