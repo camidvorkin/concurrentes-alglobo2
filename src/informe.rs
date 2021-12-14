@@ -16,14 +16,14 @@
 //!
 //! Por un lado se debe levantar el sistema de alglobo que será el encargado de resolver todo el procesamiento de pagos y enviárselo a cada uno de los agentes en cuestión. De forma opcional, se puede pasar por parámetro un archivo txt con los diferentes precios a cobrar, de no agregar este parámetro, se utilizará el archivo default `src/prices.csv`. Para levantarlo: `cargo run --bin alglobo <archivo>`
 //!
-//! Por otro lado, se debe levantar el sistema de agentes(Banco, Aerolínea y Hotel) que se encargaran de recibir y procesar el pago. Para levantarlo: `cargo run --bin agents`
+//! Por otro lado, se debe levantar el sistema de agentes (Banco, Aerolínea y Hotel) que se encargaran de recibir y procesar el pago. Para levantarlo: `cargo run --bin agents`
 //!
 //! ### Supuestos
 //!
 //! - Al tratar las transacciones con el método de commit de dos fases, se asume que si un nodo de alglobo falla:
 //!    - Antes de finalizar la primera fase (no termina el PREPARE), el siguiente nodo de alglobo comienza desde el principio.
 //!     - Después de finalizar la primera fase (imprime el PREPARE pero no el COMMIT/ABORT), el siguiente nodo de alglobo ABORTA esa transacción.
-//!     - Durante la segunda fase(no logra imprimir COMMIT/ABORT), el siguiente nodo de alglobo ABORTA esa transacción.
+//!     - Durante la segunda fase (no logra imprimir COMMIT/ABORT), el siguiente nodo de alglobo ABORTA esa transacción.
 //!     - Tras finalizar la segunda fase, significa que se completó la transacción y el siguiente nodo podrá seguir con la siguiente transacción.
 //! - Una vez que finalizan las líneas del archivo, se cierran ambos sistemas.
 //!
@@ -36,9 +36,9 @@
 //! El sistema de AlGlobo.com es de misión crítica y por lo tanto debe mantener varias réplicas en línea listas para continuar el proceso, aunque solo una de ellas se encuentra activa al mismo tiempo.
 //!
 //! Una vez que se enciende el sistema, la terminal se queda a la espera de que el usuario ingrese un número, el identificador de la réplica, para poder simular la salida de servicio de la misma, mostrando que el sistema en su conjunto sigue funcionando.
-//! Esto se resuelve con el **algoritmo Ring**. Para resolver con este algoritmo, fue importante que cada réplica conozca el identificador de la siguiente réplica y el identificador de la réplica líder(la réplica que se mantiene activa y resuelve el procesamiento de pagos).
+//! Esto se resuelve con el **algoritmo Ring**. Para resolver con este algoritmo, fue importante que cada réplica conozca el identificador de la siguiente réplica y el identificador de la réplica líder (la réplica que se mantiene activa y resuelve el procesamiento de pagos).
 //!
-//! Al conocer el identificador, el mismo va a poder conocer la dirección a la cual enviar los mensajes, ya que las mismas dependen de este. Cada réplica cuenta con dos direcciones, una para control y todo los relacionado al algoritmo de elección por los que va a enviar y recibir mensajes del tipo ELECTION, COORDINATOR, ACK(por tratarse de UDP) y otro de data por el que se va a enviar información para mantener a las réplicas actualizadas.
+//! Al conocer el identificador, el mismo va a poder conocer la dirección a la cual enviar los mensajes, ya que las mismas dependen de este. Cada réplica cuenta con dos direcciones, una para control y todo los relacionado al algoritmo de elección por los que va a enviar y recibir mensajes del tipo ELECTION, COORDINATOR, ACK (por tratarse de UDP) y otro de data por el que se va a enviar información para mantener a las réplicas actualizadas.
 //!
 //! Todas estas direcciones se van a utilizar para enviar y recibir mensajes vía Socket UDP en torno a resolver el problema de disponibilidad del servicio:
 //! 1. Cuando un proceso nota que el coordinador fallo, tras un TIMEOUT específico que le indica que no está recibiendo información del líder hace un tiempo, este arma un mensaje ELECTION que contiene su identificador y envía este mensaje al siguiente nodo de la red. Este primer mensaje se puede ver en el método `find_new()` en `src/alglobo_nodo.rs`.
@@ -52,7 +52,7 @@
 //!
 //! En el caso de ser líder, el proceso se encargará de leer una línea a la vez del archivo pasado por parámetro o el default `src/prices.csv`. Cada línea del archivo va a contener 3 números, siendo el primero el precio a cobrar al Banco, el segundo el de la Aerolínea y el tercero del Hotel.
 //! De manera concurrente y vía TCP se les envía a los tres agentes el precio a cobrar. Este envío se va a resolver con **commit en dos fases**:
-//! - Fase 1: El coordinador escribe el mensaje de PREPARE y lo broadcastea a los tres agentes(Con TCP). Luego broadcastea al resto de los procesos que se encuentra en la fase PREPARE para la transacción corresponde(Con UDP por la dirección de data mencionada anteriormente).
+//! - Fase 1: El coordinador escribe el mensaje de PREPARE y lo broadcastea a los tres agentes (con TCP). Luego broadcastea al resto de los procesos que se encuentra en la fase PREPARE para la transacción corresponde (con UDP por la dirección de data mencionada anteriormente).
 //! - Fase 2: A partir de las respuestas obtenidas por los agentes, el coordinador envía el mensaje de COMMIT o ABORT (de haber al menos un agente que responda ABORT, el proceso entero se deberá abortar) a los tres agentes y luego lo broadcastea a todos los procesos.
 //!
 //! De esta forma garantizamos que las transacciones sean serializables, por lo que si se cae el coordinador, la réplica que tome su lugar va a tener la información necesaria para terminar su trabajo y continuarlo sin notar cambios en el funcionamiento del sistema.
