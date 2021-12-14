@@ -29,10 +29,12 @@
 //! 
 //! #### Alglobo
 //! 
+//! ##### Coordinador
+//! 
 //! El sistema de AlGlobo.com es de misión crítica y por lo tanto debe mantener varias réplicas en línea listas para continuar el proceso, aunque solo una de ellas se encuentra activa al mismo tiempo. 
-//! Una vez que se enciende el sistema, la terminal se queda a la espera de que el usuario ingrese un numero para poder simular la salida de servicio, mostrando que el sistema en su conjunto sigue funcionando.
-//! Esto se resuelve con el **algoritmo Ring**. Para resolver con este algormitmo, fue importante que cada réplica conozca el identificador de la siguiente réplica y el identificador de la réplica lider(la replica que se mantiene activa y resuelve el procesamiento de pagos). Además, se abre un canal de control por donde se van a estar enviando los mensajes de los nodos. 
-//! Cada uno de los nodos va a obtener su dirección especifica para resolver el algoritmo a partir de 
+//! Una vez que se enciende el sistema, la terminal se queda a la espera de que el usuario ingrese un número, el identificador de la réplica, para poder simular la salida de servicio de la misma, mostrando que el sistema en su conjunto sigue funcionando.
+//! Esto se resuelve con el **algoritmo Ring**. Para resolver con este algormitmo, fue importante que cada réplica conozca el identificador de la siguiente réplica y el identificador de la réplica lider(la replica que se mantiene activa y resuelve el procesamiento de pagos). 
+//! Al conocer el identificador, el mismo va a poder conocer la dirección a la cual enviar los mensajes ya que las direcciones se obtienen a partir de la siguiente función: 
 //! ``` rust
 //! pub fn id_to_ctrladdr(id: usize) -> SocketAddr {
 //!     let port = (1100 + id) as u16;
@@ -40,13 +42,27 @@
 //! }
 //! ```
 //! 
-//! ---
-//! 
+//! Todas estas direcciones se van a utilizar para enviar y recibir mensajes via Socket UDP en torno a resolver el problema de disponibilidad del servicio:
 //! 1. Cuando un proceso nota que el coordinador fallo, tras un TIMEOUT especifico que le indica que no recibe información del lider, este arma un mensaje ELECTION que contiene su identificador y envía este mensaje al siguiente nodo de la red. Este primer mensaje se puede ver en el método `find_new()` en `src/leader_election.rs`.
 //! 2. El proceso que recibe el mensaje, agrega su identificador al final del mensaje y lo envía al siguiente nodo de la red. Esta recursión se puede ver en el método `safe_send_next` en `src/leader_election.rs`.
 //! 3. Cuando el proceso original que noto que el lider fallo recibe el mensaje que originalmente inicio él, busca entre los diferentes ids encolados aquel con identificador más alto, para así decidir quien es el lider. Arma un nuevo mensaje, pero esta vez del tipo COORDINATOR y lo envia a su sucesor. 
 //! 4. Cuando el mensaje finaliza la circulación, se elimina el anillo.
 //! 
-//! En primer lugar, el sistema de alglobo debe encargarse de resolver todo el procesamiento de pagos y enviarselo a cada uno de los agentes en cuestión.
+//! ##### Procesamiento de pagos
+//! 
+//! El sistema de alglobo debe encargarse de resolver todo el procesamiento de pagos y enviarselo a cada uno de los agentes en cuestión. Para ello se abre una conexión UDP para cada uno de los procesos. 
+//! En el caso de ser lider, el proceso se encargara de leer una linea a la vez del archivo pasado por párametro o el default `src/prices.csv`. Cada línea del archivo va a contener 3 números, siendo el primero el precio a cobrar al Banco, el segundo el de la Aereolinea y el tercero del Hotel.
+//! De manera concurrente y via TCP se les envia a los tres agentes el precio a cobrar. Este envio se va a resolver con **commit en dos fases**:
+//! - Fase 1: El coordinador escribe el mensaje de PREPARE y lo broadcastea a los tres agentes. Luego broadcastea al resto de los procesos que se encuentra en la fase PREPARE para la transacción corresponde.
+//! - Fase 2: A partir de las respuestas obtenidas por los agentes, el coordinador envia el mensaje de COMMIT o ABORT (de haber al menos un agente que responda ABORT, el proceso entero se debera abortar) a los tres agentes y luego lo broadcastea a todos los procesos.
+//! De esta forma garantizamos que las transacciones sean serializables, por lo que si se cae el coordinador, la replica que tome su lugar va a tener la información necesaria para terminar su trabajo y continuarlo sin notar cambios en el funcionamiento del sistema.
+//! 
+//! #### Agentes
+//! 
+//! Cosas a decir:
+//! - la terminal los escucha pa morir
+//! - commit/abort/prepare
+//! - TCP
+//! 
 //! 
 fn main() {}
