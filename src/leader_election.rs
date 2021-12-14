@@ -81,13 +81,13 @@ impl LeaderElection {
 
             match msg_type {
                 MSG_ACK => {
-                    self.logger.info(format!("Got ACK from {}", from));
+                    self.logger.trace(format!("Got ACK from {}", from));
                     *self.got_ack.0.lock().expect("Unable to get stop lock") = Some(ids[0]);
                     self.got_ack.1.notify_all();
                 }
                 MSG_ELECTION => {
                     self.logger
-                        .info(format!("Got ELECTION from {} with ids {:?}", from, ids));
+                        .trace(format!("Got ELECTION from {} with ids {:?}", from, ids));
                     self.socket
                         .send_to(&self.ids_to_msg(MSG_ACK, &[self.id]), from)
                         .expect("Unable to send data");
@@ -105,14 +105,14 @@ impl LeaderElection {
                 }
                 MSG_COORDINATOR => {
                     self.logger
-                        .info(format!("Got COORDINATOR from {} with ids {:?}", from, ids));
+                        .trace(format!("Got COORDINATOR from {} with ids {:?}", from, ids));
                     *self.leader_id.0.lock().expect("Unable to get lock") = Some(ids[0]);
                     self.leader_id.1.notify_all();
                     self.socket
                         .send_to(&self.ids_to_msg(MSG_ACK, &[self.id]), from)
                         .expect("Unable to send message");
                     self.logger
-                        .info(format!("Sent ACK to {} with ids {:?}", from, ids));
+                        .trace(format!("Sent ACK to {} with ids {:?}", from, ids));
                     if !ids[1..].contains(&self.id) {
                         ids.push(self.id);
                         let msg = self.ids_to_msg(MSG_COORDINATOR, &ids);
@@ -121,7 +121,7 @@ impl LeaderElection {
                     }
                 }
                 MSG_KILL => {
-                    self.logger.info("Got KILL. Stopping".to_string());
+                    self.logger.info("Got killed".to_string());
                     self.stop();
                     break;
                 }
@@ -169,11 +169,11 @@ impl LeaderElection {
             return;
         }
         self.logger
-            .info(format!("Running safe_send_next for id {}", id));
+            .trace(format!("Running safe_send_next for id {}", id));
         let next_id = self.next(id);
         if next_id == self.id {
             self.logger
-                .info(format!("Sent message {} to {}", msg[0], id));
+                .trace(format!("Sent message {} to {}", msg[0], id));
             panic!("Complete ring, sent message to itself with no response");
         }
         *self.got_ack.0.lock().expect("Unable to get stop lock") = None;
@@ -382,7 +382,7 @@ impl LeaderElection {
 
             let im_alive_clone_agents = im_alive.clone();
             self.logger
-                .info(format!("Transaction {} | PREPARE", transaction_id));
+                .trace(format!("Transaction {} | PREPARE", transaction_id));
 
             let (all_responses, is_timeout) = self.broadcast(
                 transaction_id,
@@ -421,13 +421,12 @@ impl LeaderElection {
         }
 
         self.logger
-            .info("Sending finish command to agents".to_string());
+            .trace("Sending finish command to agents".to_string());
         let dummy_data = vec![0; agents_ports.len()];
         let (_all_responses, _is_timeout) =
             self.broadcast(0, &dummy_data, FINISH, &agents_ports as &[u16], &im_alive);
 
-        self.logger
-            .info("Sending kill command to nodes".to_string());
+        self.logger.info("Killing all replicas".to_string());
         for i in 0..N_NODES {
             if i == self.id {
                 continue;
@@ -453,7 +452,7 @@ impl LeaderElection {
     }
 
     pub fn loop_node(&mut self) {
-        self.logger.info("START".to_string());
+        self.logger.info("Start".to_string());
         let socket = UdpSocket::bind(id_to_dataaddr(self.id)).expect("Unable to bind socket");
 
         while !self.stop.load(Ordering::SeqCst) {
@@ -465,7 +464,7 @@ impl LeaderElection {
             } else {
                 let leader_id = self.get_leader_id();
                 self.logger
-                    .info(format!("Waiting for message from leader {}", leader_id));
+                    .trace(format!("Waiting for message from leader {}", leader_id));
 
                 let mut response: [u8; std::mem::size_of::<usize>() + 1] = Default::default();
                 socket
@@ -478,15 +477,13 @@ impl LeaderElection {
                         response[1..].try_into().expect("Incorrect message length");
                     *self.last_id.0.lock().expect("Unable to get lock") =
                         usize::from_be_bytes(id_bytes) as usize;
-                    self.logger.info(format!(
+                    self.logger.trace(format!(
                         "Received last log: Last status is {} for node {}",
                         response[0], response[1]
                     ));
                 } else {
-                    self.logger.info(
-                        "The leader is dead, start to find a new one with Ring Algorithm"
-                            .to_string(),
-                    );
+                    self.logger
+                        .info("The leader is dead. Long live the leader.".to_string());
                     self.find_new();
                 }
             }
