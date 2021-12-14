@@ -42,9 +42,13 @@
 //! Al conocer el identificador, el mismo va a poder conocer la dirección a la cual enviar los mensajes, ya que las mismas dependen de este. Cada réplica cuenta con dos sockets para recibir información, una para control y todo los relacionado al algoritmo de elección por los que va a enviar y recibir mensajes del tipo ELECTION, COORDINATOR, ACK (por tratarse de UDP) y otro de data por el cuál el lider enviará información de los pagos procesados a las réplicas para que estén actualizadas.
 //!
 //! Todas estas direcciones se van a utilizar para enviar y recibir mensajes vía Socket UDP en torno a resolver el problema de disponibilidad del servicio:
+//!
 //! 1. Cuando una réplica nota que el coordinador fallo por llegar a un TIMEOUT sin obtener nueva información del líder, este arma un mensaje ELECTION que contiene su identificador y envía este mensaje a la siguiente réplica de la red. Este primer mensaje se puede ver en el método `find_new()` en `src/alglobo_nodo.rs`.
+//!
 //! 2. El proceso que recibe el mensaje, agrega su identificador al final del mensaje y lo envía a la siguiente réplica de la red. En el caso que la siguiente réplica no responda con un ACK, se intenta con la siguiente. De esta forma se asegura que el mensaje pase por todas las réplicas activas. Esta recursión se puede ver en el método `safe_send_next` en `src/alglobo_nodo.rs`.
+//!
 //! 3. Cuando el proceso original que noto que el líder fallo recibe el mensaje que originalmente inició él, busca entre los diferentes ids encolados aquel con identificador más alto, y este será el nuevo líder. Arma un nuevo mensaje, pero esta vez del tipo COORDINATOR y lo envía a su sucesor.
+//!
 //! 4. Cuando el mensaje COORDINATOR finaliza la circulación, todas las réplicas estarán al tanto del nuevo líder.
 //!
 //! ##### Procesamiento de pagos
@@ -53,7 +57,9 @@
 //!
 //! En el caso de ser líder, el proceso se encargará de leer una línea a la vez del archivo pasado por parámetro o el default `src/prices.csv`. Cada línea del archivo va a contener 3 números, siendo el primero el precio a cobrar al Banco, el segundo el de la Aerolínea y el tercero del Hotel.
 //! De manera concurrente y vía TCP se les envía a los tres agentes el precio a cobrar. Este envío se va a resolver con **commit en dos fases**:
+//!
 //! - Fase 1: El coordinador escribe el mensaje de PREPARE y lo envía a los tres agentes (con TCP). Luego emite al resto de las réplicas que se encuentra en la fase PREPARE para la transacción corresponde (con UDP por la dirección de data mencionada anteriormente).
+//!
 //! - Fase 2: A partir de las respuestas obtenidas por los agentes, el coordinador envía el mensaje de COMMIT o ABORT (este último sucede si hay al menos un ABORT o hubo un error de conexión con algún agente) a los tres agentes y luego emite dicho estado a las otras réplicas.
 //!
 //! De esta forma garantizamos que las transacciones sean serializables, por lo que si se cae el coordinador, la réplica que tome su lugar va a tener la información necesaria para terminar su trabajo y continuarlo sin notar cambios en el funcionamiento del sistema.
@@ -65,7 +71,9 @@
 //! La estructura **Agent** maneja la lógica básica de las transacciones, realizando COMMIT o ABORT de forma acorde, mientras que en `agents.rs` se levantan los servicios correspondientes donde cada uno tendrá una estructura **Agent** asociada.
 //!
 //!  Como se meciono anteriormente, las transacciones se resuelven con commit en dos fases, por lo que cada agente va a tener que recibir dos mensajes:
+//!
 //! - Primero resuelve el PREPARE, en donde simplemente a partir del `success_rate` del agente específico devuelve si se trata de un COMMIT o ABORT. El mensaje se envía a alglobo vía TCP
+//!
 //! - Luego, tras recibir el mensaje de la segunda fase de alglobo, loguea COMMIT o ABORT según corresponda.
 //!
 //!
