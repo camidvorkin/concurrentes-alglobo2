@@ -7,7 +7,7 @@
 //! ## Trabajo Práctico
 //!
 //! ### Introducción
-//! 
+//!
 //! En este trabajo práctico, se desarrolló la continuación de Alglobo.com desarrollada en la primera etapa de la materia. En este caso, se debe resolver un sistema de procesamiento de pagos con la complejidad de que se trata de un sistema distribuido, es decir que los pagos no solo se deberán ejecutar concurrentemente a los diferentes agentes pero además se deben enviar vía Sockets.
 //!
 //! Por otro lado, se suma la complejidad de que tanto los agentes a los que se les envía el dinero como la plataforma de alglobo puede fallar y el programa debe poder continuar sin problema.
@@ -70,5 +70,3 @@
 //! TODO: @jdisan
 //!
 fn main() {}
- 
-
