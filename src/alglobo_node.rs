@@ -45,11 +45,15 @@ pub fn id_to_dataaddr(id: usize) -> SocketAddr {
 
 /// The amount of nodes to launch the program with
 pub const N_NODES: usize = 5;
-/// ACK
+/// Control message for ACKs
 pub const MSG_ACK: u8 = b'A';
+/// Control message for election messages
 pub const MSG_ELECTION: u8 = b'E';
+/// Control message for coordinator messages
 pub const MSG_COORDINATOR: u8 = b'C';
+/// Control message for kill messages
 pub const MSG_KILL: u8 = b'K';
+/// Timeout for receiving transaction information in the replicas
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 
 /// AlgloboNode struct
@@ -64,15 +68,18 @@ pub struct AlgloboNode {
     got_ack: Arc<(Mutex<Option<usize>>, Condvar)>,
     /// Stop flag to end the node's threads
     stop: Arc<AtomicBool>,
-    /// Last processed id of the transaction
-    last_id: Arc<(Mutex<usize>, Condvar)>,
-    last_status: Arc<(Mutex<u8>, Condvar)>,
+    /// Last processed id of the transaction, with a lock
+    last_id: Arc<Mutex<usize>>,
+    /// Last processed id of the transaction, with a lock
+    last_status: Arc<Mutex<u8>>,
+    /// Logger of the node
     logger: Logger,
 }
 
 // TODO: Clippy warning
 #[allow(clippy::mutex_atomic)]
 impl AlgloboNode {
+    /// Creates the AlgoboNode and starts the control responder thread
     pub fn new(id: usize) -> AlgloboNode {
         let mut ret = AlgloboNode {
             id,
@@ -80,8 +87,8 @@ impl AlgloboNode {
             leader_id: Arc::new((Mutex::new(Some(id)), Condvar::new())),
             got_ack: Arc::new((Mutex::new(None), Condvar::new())),
             stop: Arc::new(AtomicBool::new(false)),
-            last_id: Arc::new((Mutex::new(0), Condvar::new())),
-            last_status: Arc::new((Mutex::new(0), Condvar::new())),
+            last_id: Arc::new(Mutex::new(0)),
+            last_status: Arc::new(Mutex::new(0)),
             logger: Logger::new(format!("node-{}", id)),
         };
 
@@ -95,6 +102,9 @@ impl AlgloboNode {
         ret
     }
 
+    /// Control responder function. Handles receiving MSG_ACK, MSG_ELECTION,
+    /// MSG_COORDINATOR and MSG_KILL messages from the control socket.
+    /// It uses the ring election algorithm.
     fn responder(&mut self) {
         while !self.stop.load(Ordering::SeqCst) {
             let mut buf = [0; 1 + size_of::<usize>() + (N_NODES + 1) * size_of::<usize>()];
@@ -171,6 +181,8 @@ impl AlgloboNode {
         }
     }
 
+    /// Parses the array of bytes into the message, returning its type and a
+    /// vector of the ids associated with it.
     fn parse_message(&self, buf: &[u8]) -> (u8, Vec<usize>) {
         let mut ids = vec![];
 
@@ -193,6 +205,8 @@ impl AlgloboNode {
         (buf[0], ids)
     }
 
+    /// Returns an array of bytes representing the message from
+    /// the message type and the ids.
     fn ids_to_msg(&self, header: u8, ids: &[usize]) -> Vec<u8> {
         let mut msg = vec![header];
         msg.extend_from_slice(&ids.len().to_le_bytes());
@@ -202,6 +216,9 @@ impl AlgloboNode {
         msg
     }
 
+    /// Sends the message to the next node in the ring. It waits for an ACK,
+    /// setting the got_ack flag, and if it doesn't receive one it will
+    /// try to send the message to the next node in the ring.
     fn safe_send_next(&self, msg: &[u8], id: usize) {
         if self.stop.load(Ordering::SeqCst) {
             return;
@@ -226,10 +243,13 @@ impl AlgloboNode {
         }
     }
 
+    /// Get the id of next node in the ring.
     fn next(&self, id: usize) -> usize {
         (id + 1) % N_NODES
     }
 
+    /// Start a new leader election sending a new MSG_ELECTION to the next node.
+    /// Blocks until a new leader is found.
     fn find_new(&mut self) {
         if self.stop.load(Ordering::SeqCst) {
             return;
@@ -245,6 +265,7 @@ impl AlgloboNode {
         );
     }
 
+    /// Clone the AlgloboNode struct.
     fn clone(&self) -> AlgloboNode {
         AlgloboNode {
             id: self.id,
@@ -258,6 +279,8 @@ impl AlgloboNode {
         }
     }
 
+    /// Broadcast a message to all agents at the same time, returning
+    /// a condvar and a vector of the results.
     fn broadcast(
         &self,
         transaction_id: usize,
@@ -335,6 +358,8 @@ impl AlgloboNode {
         (all_responses.to_vec(), timeout.timed_out())
     }
 
+    /// Finishes the transaction acording to the results of the broadcast
+    /// and its last status obtained.
     fn finish_transaction(
         &self,
         operation: u8,
@@ -371,10 +396,15 @@ impl AlgloboNode {
         );
 
         self.broadcast_last_log(operation, transaction_id);
-        *self.last_id.0.lock().expect("Unable to get lock") += 1;
-        *self.last_status.0.lock().expect("Unable to get lock") = operation;
+        *self.last_id.lock().expect("Unable to get lock") += 1;
+        *self.last_status.lock().expect("Unable to get lock") = operation;
     }
 
+    /// Function used by the leader for handling the payments. It sends
+    /// the payment information in the prices.csv to all the agents and logs
+    /// their results.
+    /// It will stop processing payments if the stop flag is set to true.
+    /// It will send a KILL message to all nodes if all payments finished processing.
     fn process_payments(&self) {
         let im_alive = Arc::new(AtomicBool::new(true));
         let agents_ports = get_agents_ports();
@@ -387,10 +417,10 @@ impl AlgloboNode {
 
         let retry_file = create_empty_csv("src/prices-retry.csv");
 
-        let last_status = *self.last_status.0.lock().expect("Unable to get lock");
+        let last_status = *self.last_status.lock().expect("Unable to get lock");
         if last_status == PREPARE {
             // If the last transaction was a PREPARE, we need to ABORT it
-            let transaction_id = *self.last_id.0.lock().expect("Unable to get lock");
+            let transaction_id = *self.last_id.lock().expect("Unable to get lock");
             self.finish_transaction(
                 ABORT,
                 transaction_id,
@@ -401,17 +431,17 @@ impl AlgloboNode {
             );
         } else if last_status == COMMIT || last_status == ABORT {
             // If the last transaction was a COMMIT or ABORT, we need to start a new one
-            *self.last_id.0.lock().expect("Unable to get lock") += 1;
+            *self.last_id.lock().expect("Unable to get lock") += 1;
         }
 
-        while *self.last_id.0.lock().expect("Unable to get lock") < prices.len() {
+        while *self.last_id.lock().expect("Unable to get lock") < prices.len() {
             if self.stop.load(Ordering::SeqCst) {
                 self.logger
                     .trace("Leader stopped before PREPARE msg".to_string());
                 return;
             }
 
-            let transaction_id = *self.last_id.0.lock().expect("Unable to get lock");
+            let transaction_id = *self.last_id.lock().expect("Unable to get lock");
             let transaction_prices = prices[transaction_id].clone();
 
             if !im_alive.load(Ordering::SeqCst) {
@@ -475,6 +505,7 @@ impl AlgloboNode {
         }
     }
 
+    /// Sends the status of the last broadcast to all the replicas.
     pub fn broadcast_last_log(&self, status: u8, id: usize) {
         let mut bytes = vec![status];
         bytes.extend(id.to_be_bytes());
@@ -489,6 +520,13 @@ impl AlgloboNode {
         }
     }
 
+    /// Main loop function of the node. If it's the leader it will process the
+    /// payments file and send each result to the replicas. If it's a replica it
+    /// will receive the results and if it doesn't receive one it will start a new
+    /// leader election.
+    ///
+    /// Will loop until the payment file is fully processed or until the stop flag
+    /// is set.
     pub fn loop_node(&mut self) {
         self.logger.info("Start".to_string());
         let socket = UdpSocket::bind(id_to_dataaddr(self.id)).expect("Unable to bind socket");
@@ -510,10 +548,10 @@ impl AlgloboNode {
                     .expect("Unable to set timeout");
 
                 if let Ok((_size, _from)) = socket.recv_from(&mut response) {
-                    *self.last_status.0.lock().expect("Unable to get lock") = response[0];
+                    *self.last_status.lock().expect("Unable to get lock") = response[0];
                     let id_bytes: [u8; std::mem::size_of::<usize>()] =
                         response[1..].try_into().expect("Incorrect message length");
-                    *self.last_id.0.lock().expect("Unable to get lock") =
+                    *self.last_id.lock().expect("Unable to get lock") =
                         usize::from_be_bytes(id_bytes) as usize;
                     self.logger.trace(format!(
                         "Received last log: Last status is {} for node {}",
@@ -526,14 +564,18 @@ impl AlgloboNode {
                 }
             }
         }
-
-        self.stop();
     }
 
+    /// Asks itself... am I the leader?
+    /// Do I exist?
+    /// Is any of this even real?
+    /// I'm not quite dead, not quite alive
+    /// It's similar to a constant state of sleep paralysis
     fn am_i_leader(&self) -> bool {
         self.get_leader_id() == self.id
     }
 
+    /// Returns the leader id
     fn get_leader_id(&self) -> usize {
         self.leader_id
             .1
@@ -545,6 +587,7 @@ impl AlgloboNode {
             .expect("Unable to get condvar result")
     }
 
+    /// Kills a node, due either to a manual trigger or to a communication timeout
     fn stop(&mut self) {
         self.logger.info("Stop node".to_string());
         self.stop.store(true, Ordering::SeqCst);

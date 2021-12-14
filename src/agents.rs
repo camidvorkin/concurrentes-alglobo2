@@ -4,7 +4,15 @@
 //!
 //! Start the program with `cargo run --bin agents`
 //!
-//! Each agent will be listening on the configured TCP port, and will log and return the transaction states.
+//! Each agent will be listening on the configured TCP port, and will log and
+//! return the transaction states.
+//!
+//! The agents.yaml file is defined as a list of items like
+//! ```yaml
+//! - name: "bank" // the name of the agent
+//!   successrate: 0.9 // the rate on which they accept payments
+//!   port: 1024 // the port to listen
+//! ```
 
 #![forbid(unsafe_code)]
 #![allow(dead_code)]

@@ -4,9 +4,11 @@
 //! the payments csv file. It will send the request to all the designated agents,
 //! using the configuration in the agents.yaml file.
 //!
-//! If a node is killed
+//! If the leader node is killed, another one is elected using the ring election
+//! agorithm.
 //!
-//! Start the program with `cargo run --bin alglobo <payments_file>.csv`
+//! Start the program with `cargo run --bin alglobo <payments_file>.csv` (or
+//! default to a csv if not provided)
 
 #![forbid(unsafe_code)]
 #![allow(dead_code)]

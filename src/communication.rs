@@ -1,3 +1,5 @@
+//! Several definitions regarding the alglobo<->agents communication protocol
+
 use std::convert::TryInto;
 
 /// Transaction Message for the first phase: preparing

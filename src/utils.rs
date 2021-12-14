@@ -1,3 +1,5 @@
+//! Global utils related to reading and parsing of csv and yaml files
+
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 
