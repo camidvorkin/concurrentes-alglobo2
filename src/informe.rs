@@ -15,6 +15,7 @@
 //! 
 //! Por un lado se debe levantar el sistema de alglobo que sera el encargado de resolver todo el procesamiento de pagos y enviarselo a cada uno de los agentes en cuestión. Para levantarlo: `cargo run --bin alglobo`
 //! Por otro lado, se debe levantar el sistema de agentes(Banco, Aereolinea y Hotel) que se encargaran de recibir y procesar el pago. Para levantarlo: `cargo run --bin agents`
+//! TOdo que se puede agregar un archivo
 //! 
 //! ### Supuestos
 //! 
@@ -64,5 +65,8 @@
 //! - commit/abort/prepare
 //! - TCP
 //! 
+//! ### Conclusión
+//! 
+//! TODO: @jdisan
 //! 
 fn main() {}
