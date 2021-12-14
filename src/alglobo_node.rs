@@ -76,7 +76,7 @@ pub struct AlgloboNode {
     logger: Logger,
 }
 
-// TODO: Clippy warning
+// Mutexes are more explicit than atomic stuff when controlling threads!
 #[allow(clippy::mutex_atomic)]
 impl AlgloboNode {
     /// Creates the AlgoboNode and starts the control responder thread
