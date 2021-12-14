@@ -54,6 +54,7 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
             Ok(s) => s,
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 if !is_alive.load(Ordering::SeqCst) {
+                    agent.logger.info("Got killed".to_string());
                     break;
                 } else {
                     continue;
@@ -85,6 +86,7 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
             .expect("Couldn't write to stream");
 
         if data_msg.opcode == FINISH {
+            agent.logger.info("Stop".to_string());
             break;
         };
 
@@ -97,7 +99,11 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
 fn main() {
     let agents = get_agents();
 
-    let is_agent_alive = vec![Arc::new(AtomicBool::new(true)); agents.len()];
+    let mut is_agent_alive = vec![];
+    for _ in 0..agents.len() {
+        is_agent_alive.push(Arc::new(AtomicBool::new(true)));
+    }
+
     let is_agent_alive_clone = is_agent_alive.clone();
 
     thread::Builder::new()
