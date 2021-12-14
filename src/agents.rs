@@ -1,3 +1,11 @@
+//! AlGlobo Agents - Process payments
+//! ---
+//! This program sets up the various agents in the agents.yaml config file so that they can be used to process flight payments.
+//!
+//! Start the program with `cargo run --bin agents`
+//!
+//! Each agent will be listening on the configured TCP port, and will log and return the transaction states.
+
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
 mod agent;
@@ -17,6 +25,7 @@ use std::{
 };
 use utils::{agent_get_name, agent_get_port, agent_get_success_rate, get_agents};
 
+/// Starts the agent killer in a new thread, killing agents via keyboard input
 fn psycho_agent_killer(is_agent_alive: Vec<Arc<AtomicBool>>) {
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -34,6 +43,9 @@ fn psycho_agent_killer(is_agent_alive: Vec<Arc<AtomicBool>>) {
     }
 }
 
+/// Constantly listens to TCP connections
+/// Handles different 2-phase transaction messages like PREPARE and COMMIT
+/// Stops listening on a F
 fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
     let addr = SocketAddr::from(([127, 0, 0, 1], agent.port));
     let listener = TcpListener::bind(addr)
@@ -95,6 +107,8 @@ fn create_listener(mut agent: Agent, is_alive: Arc<AtomicBool>) {
     }
 }
 
+/// Main function. Starts the agents from the .yaml configuration file
+/// and the agent killer. Finishes when all the agents are killed.
 fn main() {
     let agents = get_agents();
 

@@ -1,3 +1,15 @@
+//! AlgloboNode struct
+//!
+//! Handles the logic of each Algobo.com node, where the leader is chosen with the ring
+//! election algorithm. The leader will send each transaction result to the replicas.
+//!
+//! The communication between nodes is done via UDP, where each node will have two
+//! sockets. One for receiving leader election messages and the other for receiving
+//! transaction results.
+//!
+//! If the replicas reach a timeout without messages from the leader, a new leader is
+//! coordinated.
+
 use std::mem::size_of;
 use std::net::UdpSocket;
 use std::sync::{Arc, Condvar, Mutex};
@@ -20,28 +32,39 @@ use std::net::SocketAddr;
 
 use crate::utils::{create_empty_csv, csv_to_prices, get_agents_ports, write_to_csv};
 
+/// Socket used for receiving leader election/coordination messages
 pub fn id_to_ctrladdr(id: usize) -> SocketAddr {
     let port = (1100 + id) as u16;
     SocketAddr::from(([127, 0, 0, 1], port))
 }
+/// Socket used for receiving transaction information from the leader
 pub fn id_to_dataaddr(id: usize) -> SocketAddr {
     let port = (1200 + id) as u16;
     SocketAddr::from(([127, 0, 0, 1], port))
 }
 
+/// The amount of nodes to launch the program with
 pub const N_NODES: usize = 5;
+/// ACK
 pub const MSG_ACK: u8 = b'A';
 pub const MSG_ELECTION: u8 = b'E';
 pub const MSG_COORDINATOR: u8 = b'C';
 pub const MSG_KILL: u8 = b'K';
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 
-pub struct LeaderElection {
+/// AlgloboNode struct
+pub struct AlgloboNode {
+    /// The id of the node
     id: usize,
+    /// The UDP socket of the node
     socket: UdpSocket,
+    /// The id of the leader, with a lock and a condvar
     leader_id: Arc<(Mutex<Option<usize>>, Condvar)>,
+    /// Flag for reliable data transfer via UDP, with a lock and a condvar
     got_ack: Arc<(Mutex<Option<usize>>, Condvar)>,
+    /// Stop flag to end the node's threads
     stop: Arc<AtomicBool>,
+    /// Last processed id of the transaction
     last_id: Arc<(Mutex<usize>, Condvar)>,
     last_status: Arc<(Mutex<u8>, Condvar)>,
     logger: Logger,
@@ -49,9 +72,9 @@ pub struct LeaderElection {
 
 // TODO: Clippy warning
 #[allow(clippy::mutex_atomic)]
-impl LeaderElection {
-    pub fn new(id: usize) -> LeaderElection {
-        let mut ret = LeaderElection {
+impl AlgloboNode {
+    pub fn new(id: usize) -> AlgloboNode {
+        let mut ret = AlgloboNode {
             id,
             socket: UdpSocket::bind(id_to_ctrladdr(id)).expect("Unable to bind socket"),
             leader_id: Arc::new((Mutex::new(Some(id)), Condvar::new())),
@@ -222,8 +245,8 @@ impl LeaderElection {
         );
     }
 
-    fn clone(&self) -> LeaderElection {
-        LeaderElection {
+    fn clone(&self) -> AlgloboNode {
+        AlgloboNode {
             id: self.id,
             socket: self.socket.try_clone().expect("Unable to clone socket"),
             leader_id: self.leader_id.clone(),

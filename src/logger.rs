@@ -2,9 +2,8 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 
+/// Log directory
 const PREFIX_PATH: &str = "logs/";
-
-/// Logging file to be created (or entirely rewritten) on each run
 
 /// Simple logging levels for our logger
 #[derive(Debug, Clone, Copy)]
@@ -15,6 +14,7 @@ pub enum LogLevel {
     INFO,
 }
 
+/// Logger struct with a name and a filename
 pub struct Logger {
     name: String,
     filename: String,
@@ -51,16 +51,19 @@ impl Logger {
         logger
     }
 
+    /// Logs an INFO message
+    /// INFO messages also go through the terminal
     pub fn info(&self, msg: String) {
         self.log(msg, LogLevel::INFO);
     }
 
+    /// Logs a TRACE message
     pub fn trace(&self, msg: String) {
         self.log(msg, LogLevel::TRACE);
     }
 
     /// Logs the message to the file and, if the level is INFO, prints to console
-    pub fn log(&self, msg: String, loglevel: LogLevel) {
+    fn log(&self, msg: String, loglevel: LogLevel) {
         let mut file = OpenOptions::new()
             .append(true)
             .open(self.filename.clone().as_str())
