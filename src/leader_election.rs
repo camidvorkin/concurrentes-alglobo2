@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 
 use crate::communication::{DataMsg, ABORT, COMMIT, FINISH, PAYMENT_ERR, PAYMENT_OK, PREPARE};
-use crate::constants::{MSG_ACK, MSG_COORDINATOR, MSG_ELECTION, MSG_KILL, N_NODES};
 use crate::logger::Logger;
 
 use std::net::SocketAddr;
@@ -30,6 +29,11 @@ pub fn id_to_dataaddr(id: usize) -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], port))
 }
 
+pub const N_NODES: usize = 5;
+pub const MSG_ACK: u8 = b'A';
+pub const MSG_ELECTION: u8 = b'E';
+pub const MSG_COORDINATOR: u8 = b'C';
+pub const MSG_KILL: u8 = b'K';
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct LeaderElection {
