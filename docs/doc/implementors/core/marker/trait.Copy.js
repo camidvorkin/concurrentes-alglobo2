@@ -1,0 +1,4 @@
+(function() {var implementors = {};
+implementors["agents"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.57.0/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"agents/logger/enum.LogLevel.html\" title=\"enum agents::logger::LogLevel\">LogLevel</a>","synthetic":false,"types":["agents::logger::LogLevel"]}];
+implementors["alglobo"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.57.0/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"alglobo/logger/enum.LogLevel.html\" title=\"enum alglobo::logger::LogLevel\">LogLevel</a>","synthetic":false,"types":["alglobo::logger::LogLevel"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

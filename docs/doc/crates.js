@@ -1,1 +1,1 @@
-window.ALL_CRATES = ["alglobo","informe"];
+window.ALL_CRATES = ["agents","alglobo","informe"];

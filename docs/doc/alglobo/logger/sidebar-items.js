@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["PREFIX_PATH","Log directory"]],"enum":[["LogLevel","Simple logging levels for our logger"]],"struct":[["Logger","Logger struct with a name and a filename"]]});
